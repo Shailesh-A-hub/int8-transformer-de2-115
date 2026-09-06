@@ -1,0 +1,8 @@
+Variant               MAE       MaxErr           KL     RankInv%
+----------------------------------------------------------------
+Version_A        0.100967     0.401563     0.532291       0.000
+Tier_0          0.0023118   0.00923638    0.0167685       0.000
+Tier_1        0.000245804  0.000979079    0.0148759       0.000
+
+Restoring divider Python self-check: PASS
+Exported mem/softmax_vectors.txt

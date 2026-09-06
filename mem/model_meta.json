@@ -1,0 +1,29 @@
+{
+  "d_model": 32,
+  "intents": [
+    "turn_on_lights",
+    "turn_off_lights",
+    "increase_volume",
+    "decrease_volume",
+    "heat_on",
+    "heat_off"
+  ],
+  "sequence_length": 8,
+  "vocab": {
+    "<pad>": 0,
+    "<unk>": 1,
+    "decrease": 11,
+    "down": 12,
+    "heat": 13,
+    "heating": 14,
+    "increase": 8,
+    "lights": 5,
+    "off": 7,
+    "on": 3,
+    "switch": 6,
+    "the": 4,
+    "turn": 2,
+    "up": 10,
+    "volume": 9
+  }
+}

@@ -1,0 +1,35 @@
+# ModelSim / QuestaSim artifacts
+work/
+sim_work/
+transcript
+*.wlf
+vsim.wlf
+
+# Quartus Prime build & temporary outputs
+db/
+incremental_db/
+output_files/
+*.qws
+*.done
+*.rpt
+*.summary
+*.smsg
+*.pin
+*.sof
+*.pof
+*.jic
+*.cdf
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.vscode/
+.idea/

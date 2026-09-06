@@ -1,0 +1,72 @@
+# vsim -c -do "run -all; quit -f" work.tb_full_transformer 
+# Start time: 01:42:46 on Sep 06,2026
+# Loading sv_std.std
+# Loading work.tb_full_transformer
+# Loading work.attention_engine
+# Loading work.weight_roms
+# Loading work.int8_mac_array
+# Loading work.softmax_tier0
+# Loading work.restoring_divider
+# Loading work.softmax_tier1
+# Loading work.softmax_detour_vA
+# run -all
+# ===================================================================================================================
+#           INT8 TRANSFORMER ACCELERATOR ON DE2-115 -- END-TO-END VERIFICATION & HARDWARE TIMING REGRESSION          
+# ===================================================================================================================
+# 
+# --- TESTING SOFTMAX VARIANT: TIER 0 (Base-2 Power-of-Two Shift) ---
+# Input Sentence         | Predicted Intent | Expected Intent  | Total Cyc | Softmax Cyc | Latency @50M | Match 
+# -------------------------------------------------------------------------------------------------------------------
+# turn on the lights     | turn_on_lights   | turn_on_lights   |      5560 |        1880 |   111.20 us | PASS
+# turn off the lights    | turn_off_lights  | turn_off_lights  |      5560 |        1880 |   111.20 us | PASS
+# increase the volume    | increase_volume  | increase_volume  |      5560 |        1880 |   111.20 us | PASS
+# decrease the volume    | decrease_volume  | decrease_volume  |      5560 |        1880 |   111.20 us | PASS
+# turn on the heat       | heat_on          | heat_on          |      5560 |        1880 |   111.20 us | PASS
+# turn off the heat      | heat_off         | heat_off         |      5560 |        1880 |   111.20 us | PASS
+# 
+# --- TESTING SOFTMAX VARIANT: TIER 1 (Power-of-Two + 16-LUT Refinement) ---
+# Input Sentence         | Predicted Intent | Expected Intent  | Total Cyc | Softmax Cyc | Latency @50M | Match 
+# -------------------------------------------------------------------------------------------------------------------
+# turn on the lights     | turn_on_lights   | turn_on_lights   |      5560 |        1880 |   111.20 us | PASS
+# turn off the lights    | turn_off_lights  | turn_off_lights  |      5560 |        1880 |   111.20 us | PASS
+# increase the volume    | increase_volume  | increase_volume  |      5560 |        1880 |   111.20 us | PASS
+# decrease the volume    | decrease_volume  | decrease_volume  |      5560 |        1880 |   111.20 us | PASS
+# turn on the heat       | heat_on          | heat_on          |      5560 |        1880 |   111.20 us | PASS
+# turn off the heat      | heat_off         | heat_off         |      5560 |        1880 |   111.20 us | PASS
+# 
+# --- TESTING SOFTMAX VARIANT: VERSION A (Conventional Fixed-Point Detour) ---
+# Input Sentence         | Predicted Intent | Expected Intent  | Total Cyc | Softmax Cyc | Latency @50M | Match 
+# -------------------------------------------------------------------------------------------------------------------
+# turn on the lights     | turn_on_lights   | turn_on_lights   |      5688 |        2008 |   113.76 us | PASS
+# turn off the lights    | turn_off_lights  | turn_off_lights  |      5688 |        2008 |   113.76 us | PASS
+# increase the volume    | increase_volume  | increase_volume  |      5688 |        2008 |   113.76 us | PASS
+# decrease the volume    | decrease_volume  | decrease_volume  |      5688 |        2008 |   113.76 us | PASS
+# turn on the heat       | heat_on          | heat_on          |      5688 |        2008 |   113.76 us | PASS
+# turn off the heat      | heat_off         | heat_off         |      5688 |        2008 |   113.76 us | PASS
+# 
+# ===================================================================================================================
+#                           CROSS-ARCHITECTURE HARDWARE TIMING & RESOURCE PROFILING SUMMARY                           
+# ===================================================================================================================
+#  Softmax Variant        | Softmax Cycles   | Total Cycles     | Latency @ 50MHz | Accuracy   | Cycle Delta 
+# -------------------------------------------------------------------------------------------------------------------
+#  Version A (Detour)     |          2008 c |          5688 c |      113.76 us |  6/6 (100%) | baseline
+#  Tier 0 (Shift-Only)    |          1880 c |          5560 c |      111.20 us |  6/6 (100%) | -128 cycles
+#  Tier 1 (16-LUT Refine) |          1880 c |          5560 c |      111.20 us |  6/6 (100%) | -128 cycles
+# -------------------------------------------------------------------------------------------------------------------
+#  Key Architectural Findings:
+#    1. Softmax Acceleration: Tier 0 and Tier 1 save 128 clock cycles per inference vs Version A (+128 cycle penalty).
+#    2. Division Hardware: All 3 variants use 24-bit multi-cycle restoring dividers (24 cycles/elem, NO combinational '/').
+#    3. Memory/Resource Trade-off:
+#       - Tier 0: 0 LUTs, 0 DSPs (pure barrel shifter) -> Ideal for ultra-constrained edge FPGA.
+#       - Tier 1: 16-entry fractional LUT -> High precision with minimal LE footprint.
+#       - Version A: 256-entry exponential LUT + descaling + requantization stages (heavy resource & cycle overhead).
+#    4. Functional Accuracy: 18 / 18 Tests Passed (100% accuracy across the 6 demonstration sentences).
+#    5. Note: Timing represents RTL-simulated latency at nominal 50 MHz clock; FPGA post-fit timing via Quartus next.
+# ===================================================================================================================
+# 
+# >>> ALL SYSTEMVERILOG END-TO-END ACCELERATOR INFERENCE TESTS PASSED! <<<
+# 
+# ** Note: $finish    : tb/tb_full_transformer.sv(192)
+#    Time: 2018170 ns  Iteration: 0  Instance: /tb_full_transformer
+# End time: 01:42:52 on Sep 06,2026, Elapsed time: 0:00:06
+# Errors: 0, Warnings: 0
