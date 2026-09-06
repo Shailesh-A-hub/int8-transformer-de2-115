@@ -60,7 +60,7 @@ Everything outside Softmax (Embedding lookup, Q/K/V projections, $QK^T$, $A \tim
 5. **Requantize**: Clamps raw quotient down to INT8 $[0, 127]$ (8 cycles).
 - **Total Softmax Latency**: **2,008 clock cycles** ($251\text{ cycles/row} \times 8\text{ rows}$).
 
-### 2.2 Version B — Tier 0: Integer-Native Base-2 Shift (Proposed)
+### 2.2 Tier 0 — Integer-Native Base-2 Shift (Proposed)
 Exploits the base-2 mathematical property: $e^z = 2^{z \cdot \log_2(e)}$.
 1. **Find Max**: $m = \max_{j}(S_j)$ (8 cycles).
 2. **Shift Amount**: Linear scale $t = (-z) \times 23$ (where $23/16 \approx 1.4375 \approx \log_2(e)$).
@@ -69,7 +69,7 @@ Exploits the base-2 mathematical property: $e^z = 2^{z \cdot \log_2(e)}$.
 - **Total Softmax Latency**: **1,880 clock cycles** ($235\text{ cycles/row} \times 8\text{ rows}$).
 - **Hardware Savings**: Saves **128 cycles** per inference by eliminating the descaling and requantization stages.
 
-### 2.3 Version B — Tier 1: Base-2 Shift + 16-Entry Fractional LUT (Proposed)
+### 2.3 Tier 1 — Base-2 Shift + 16-Entry Fractional LUT (Proposed)
 Refines Tier 0 by splitting $t$ into integer quotient $q$ and fractional remainder $f$:
 $$t = -z \times \log_2(e) \implies 2^{-t} = 2^{-(q + f)} = 2^{-q} \times 2^{-f}$$
 1. **Find Max**: $m = \max_{j}(S_j)$ (8 cycles).
