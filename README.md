@@ -58,11 +58,11 @@ All division operations in RTL execute sequentially via a **parameterized 24-bit
 ===================================================================================================================
                           CROSS-ARCHITECTURE HARDWARE TIMING & RESOURCE PROFILING SUMMARY                           
 ===================================================================================================================
- Softmax Variant        | Softmax Cycles   | Total Cycles     | Latency @ 50MHz | Accuracy   | Cycle Delta 
+ Softmax Variant        | Softmax Cycles   | Total Cycles     | Latency @ 50MHz | Test Vectors | Cycle Delta 
 -------------------------------------------------------------------------------------------------------------------
- Version A (Detour)     |          2008 c |          5688 c |      113.76 us |  6/6 (100%) | baseline
- Tier 0 (Shift-Only)    |          1880 c |          5560 c |      111.20 us |  6/6 (100%) | -128 cycles
- Tier 1 (16-LUT Refine) |          1880 c |          5560 c |      111.20 us |  6/6 (100%) | -128 cycles
+ Version A (Detour)     |          2008 c |          5688 c |      113.76 us |   6/6 passed | baseline
+ Tier 0 (Shift-Only)    |          1880 c |          5560 c |      111.20 us |   6/6 passed | -128 cycles
+ Tier 1 (16-LUT Refine) |          1880 c |          5560 c |      111.20 us |   6/6 passed | -128 cycles
 -------------------------------------------------------------------------------------------------------------------
  Key Architectural Findings:
    1. Softmax Acceleration: Tier 0 and Tier 1 save 128 clock cycles per inference vs Version A (+128 cycle penalty).
@@ -71,7 +71,7 @@ All division operations in RTL execute sequentially via a **parameterized 24-bit
       - Tier 0: 0 LUTs, 0 DSPs (pure barrel shifter) -> Ideal for ultra-constrained edge FPGA.
       - Tier 1: 16-entry fractional LUT -> High precision with minimal LE footprint.
       - Version A: 256-entry exponential LUT + descaling + requantization stages (heavy resource & cycle overhead).
-   4. Functional Accuracy: 18 / 18 Tests Passed (100% accuracy across the 6 demonstration sentences).
+   4. Test Vector Verification: 18 / 18 Tests Passed (6/6 selected test vectors passed across all 3 variants).
    5. Note: Timing represents RTL-simulated latency at nominal 50 MHz clock; FPGA post-fit timing via Quartus next.
 ===================================================================================================================
 ```
@@ -111,7 +111,7 @@ $$\text{Tokens } [x_0..x_7] \xrightarrow{\text{ROM}} E \xrightarrow{W_Q, W_K, W_
 │   └── de2_115_top.sv                 # Top-level module with DE2-115 pinouts & 7-seg displays
 ├── quartus/                           # Turnkey Quartus Prime synthesis & fitting project
 │   ├── int8_transformer_de2_115.qpf  # Quartus project revision file
-│   ├── int8_transformer_de2_115.qsf  # Complete EP4CE115F29C7 device settings & pin assignments
+│   ├── int8_transformer_de2_115.qsf  # Cyclone IV device settings (pinout requires verification; see docs/PINOUT_REQUIRED.md)
 │   ├── int8_transformer_de2_115.sdc  # 50.0 MHz SDC timing constraints & I/O delays
 │   └── mem/                           # Mirrored .hex weight files for standalone compilation
 ├── tb/                                # Self-checking simulation testbenches
@@ -178,5 +178,5 @@ To synthesize and fit the design to the **Cyclone IV EP4CE115**:
 
 To maintain absolute academic and engineering honesty during review:
 - **Latency**: All numbers reported here represent **RTL-simulated latency at 50 MHz** ($5,560$ cycles = $111.20\ \mu\text{s}$ for Tier 0/1; $5,688$ cycles = $113.76\ \mu\text{s}$ for Version A), not post-fit board measurements.
-- **Accuracy**: Demonstrates **100% accuracy on the 6 demonstration sentences (18/18 test cases)**, not the complete Fluent Speech Commands dataset.
+- **Accuracy**: Demonstrates **6/6 selected test vectors passed across all 3 Softmax variants (18/18 test cases)**, not the complete Fluent Speech Commands dataset.
 - **Division**: Verified 24-bit multi-cycle restoring divider (24 cycles/element, 192 divider cycles/row). Zero combinational division in RTL.

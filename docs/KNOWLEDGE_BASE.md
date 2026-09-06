@@ -2,7 +2,7 @@
 
 **Target Hardware**: Terasic DE2-115 Development Board (Intel/Altera Cyclone IV EP4CE115F29C7)  
 **Repository**: [https://github.com/Shailesh-A-hub/int8-transformer-de2-115](https://github.com/Shailesh-A-hub/int8-transformer-de2-115)  
-**Primary Clock**: 50.0 MHz On-Board Oscillator (`PIN_Y2`)  
+**Primary Clock**: 50.0 MHz Nominal Clock (FPGA package pin to be populated from official DE2-115 reference)  
 **Current Milestone**: RTL Verified Cycle-Accurate in ModelSim (18/18 Tests Passed) $\to$ Entering Quartus Synthesis Phase  
 
 ---
@@ -103,7 +103,7 @@ rtl/
 ├── weight_roms.v           # Parameter storage (pre-loaded from mem/*.hex via $readmemh)
 ├── cycle_counter.v         # Hardware execution cycle counter with latched output
 ├── uart_tx.v, uart_rx.v    # 115,200-baud UART transmitter and receiver
-└── de2_115_top.sv          # Top-level entity with DE2-115 I/O bindings & 7-segment hex decoders
+└── de2_115_top.sv          # Top-level module with board-facing port bindings & 7-seg decoders
 ```
 
 ### 3.2 Dynamic Runtime Computation vs Static Storage
@@ -133,11 +133,11 @@ Simulation executed via `scripts/run_sim_modelsim.ps1` on ModelSim ASE 10.5b.
 
 ### 4.1 Cross-Architecture Timing Summary
 
-| Architecture Variant | Softmax FSM Cycles | Total Inference Cycles | Simulated Latency @ 50 MHz | Demo Accuracy | Cycle Advantage |
+| Architecture Variant | Softmax FSM Cycles | Total Inference Cycles | Simulated Latency @ 50 MHz | Test Vectors Passed | Cycle Advantage |
 |---|---|---|---|---|---|
-| **Version A (Detour)** | 2,008 cycles | 5,688 cycles | 113.76 µs | 6/6 (100%) | Baseline |
-| **Tier 0 (Shift-Only)** | **1,880 cycles** | **5,560 cycles** | **111.20 µs** | 6/6 (100%) | **-128 cycles (-2.25% total, -6.37% Softmax)** |
-| **Tier 1 (16-LUT Refinement)** | **1,880 cycles** | **5,560 cycles** | **111.20 µs** | 6/6 (100%) | **-128 cycles (-2.25% total, -6.37% Softmax)** |
+| **Version A (Detour)** | 2,008 cycles | 5,688 cycles | 113.76 µs | 6/6 selected vectors | Baseline |
+| **Tier 0 (Shift-Only)** | **1,880 cycles** | **5,560 cycles** | **111.20 µs** | 6/6 selected vectors | **-128 cycles (-2.25% total, -6.37% Softmax)** |
+| **Tier 1 (16-LUT Refinement)** | **1,880 cycles** | **5,560 cycles** | **111.20 µs** | 6/6 selected vectors | **-128 cycles (-2.25% total, -6.37% Softmax)** |
 
 ### 4.2 Numerical Error Metrics (Python PTQ Simulation)
 Evaluated across 1,000 synthetic attention vectors against 64-bit floating-point baseline:
@@ -154,11 +154,11 @@ Evaluated across 1,000 synthetic attention vectors against 64-bit floating-point
 
 ## 5. Quartus Prime Synthesis & Physical Verification Plan
 
-### 5.1 Project Setup
+### 5.1 Project Setup & QSF Warning
 The turnkey Quartus project is located in `quartus/int8_transformer_de2_115.qpf`.
 - **Target FPGA**: Cyclone IV E `EP4CE115F29C7`.
-- **Settings File**: `quartus/int8_transformer_de2_115.qsf` (contains complete pin assignments for all switches, keys, 7-segment displays, and LEDs).
-- **Constraints**: `quartus/int8_transformer_de2_115.sdc` (50 MHz clock on `PIN_Y2`).
+- **Settings File**: `quartus/int8_transformer_de2_115.qsf` (**QSF requires verified DE2-115 pin assignments before compilation; see `docs/PINOUT_REQUIRED.md`**).
+- **Constraints**: `quartus/int8_transformer_de2_115.sdc` (50 MHz clock constraint on port `CLOCK_50`).
 
 ### 5.2 Metrics to Extract from Compilation
 To complete the scientific proof, teammates must compile the project in Quartus Prime Lite and record:
@@ -175,22 +175,26 @@ To complete the scientific proof, teammates must compile the project in Quartus 
 
 ## 6. DE2-115 Board Pinout & Live Demonstration Guide
 
-### 6.1 Board Pinout Reference
+### 6.1 DE2-115 Pinout Status & Port-to-Function Mapping
 
-| Port Name | Board Component | Pin Number | Function / Behavior |
+> [!IMPORTANT]
+> **DE2-115 Pinout Status:** Exact FPGA package pin assignments must be populated from the official Terasic DE2-115 reference/pin-assignment file or an existing verified Quartus template. Do not invent or assume pin numbers (see [PINOUT_REQUIRED.md](file:///c:/Users/shail/OneDrive/Desktop/Docs/projects%20final%20copies/next%20gen/INT8_Transformer_DE2_115_Implementation/int8_transformer_de2_115/docs/PINOUT_REQUIRED.md)). The current RTL exposes generic board-facing ports; pin assignment verification is a Quartus integration task.
+
+| RTL Port Name | Target Board Feature | Required Direction | Functional Description |
 |---|---|---|---|
-| `CLOCK_50` | 50 MHz Oscillator | `PIN_Y2` | System master clock |
-| `KEY[0]` | Pushbutton 0 | `PIN_M23` | Asynchronous active-low reset |
-| `KEY[1]` | Pushbutton 1 | `PIN_M21` | Inference trigger pulse (Start) |
-| `SW[1:0]` | Slide Switches 1..0 | `PIN_AC28`, `PIN_AB28` | Softmax Mode: `00`=Tier 0, `01`=Tier 1, `10`=Version A |
-| `SW[4:2]` | Slide Switches 4..2 | `PIN_AB27`, `PIN_AD27`, `PIN_AC27` | Test Sentence Selector (Sentences 0 to 5) |
-| `LEDR[2:0]` | Red LEDs 2..0 | `PIN_E19`, `PIN_F19`, `PIN_G19` | Predicted winning Intent ID (`0` to `5`) |
-| `LEDG[0]` | Green LED 0 | `PIN_E21` | Accelerator Busy indicator |
-| `LEDG[1]` | Green LED 1 | `PIN_E22` | Inference Done pulse indicator |
-| `HEX0` | 7-Segment Display 0 | `PIN_G18`..`PIN_H22` | Winning Intent ID digit |
-| `HEX1` | 7-Segment Display 1 | `PIN_M24`..`PIN_U24` | Active Softmax Mode (`0`, `1`, `A`) |
-| `HEX7-HEX2` | 7-Segment Displays 7..2 | Multiple | Latched cycle count (Hexadecimal) |
-| `UART_TXD` | RS-232 / USB-UART | `PIN_G9` | Telemetry packet output (`I:<id> C:<cyc>\r\n`) |
+| `CLOCK_50` | On-Board Oscillator | Input | 50.0 MHz master clock |
+| `KEY[0]` | Pushbutton 0 | Input | Asynchronous active-low reset |
+| `KEY[1]` | Pushbutton 1 | Input | Active-low inference trigger (Start pulse) |
+| `SW[1:0]` | Slide Switches 1..0 | Input | Softmax Mode selector (`00`: Tier 0, `01`: Tier 1, `10`: Version A) |
+| `SW[4:2]` | Slide Switches 4..2 | Input | Demonstration Sentence selector (Sentences 0 to 5) |
+| `LEDR[2:0]` | Red LEDs 2..0 | Output | Winning Intent ID binary display (`0` to `5`) |
+| `LEDG[0]` | Green LED 0 | Output | Accelerator Busy status indicator |
+| `LEDG[1]` | Green LED 1 | Output | Inference Done status pulse |
+| `HEX0[6:0]` | 7-Segment Display 0 | Output | Active-low 7-seg display of winning Intent ID digit |
+| `HEX1[6:0]` | 7-Segment Display 1 | Output | Active-low 7-seg display of active Softmax Mode (`0`, `1`, `A`) |
+| `HEX7-HEX2` | 7-Segment Displays 7..2 | Output | Active-low 7-seg display of latched inference cycle count |
+| `UART_TXD` | RS-232 / USB-UART | Output | Serial telemetry output at 115,200 baud (`I:<id> C:<cyc>\r\n`) |
+| `UART_RXD` | RS-232 / USB-UART | Input | Serial command input (optional future expansion) |
 
 ### 6.2 The 4-Layer Demonstration Strategy
 For presentations and judging, avoid relying solely on "turning on an LED":
@@ -208,19 +212,28 @@ When presenting or writing papers, adhere strictly to these claim boundaries:
 | Claim Category | Permitted / Defensible Statement | Prohibited / Invalid Claim |
 |---|---|---|
 | **Latency** | *"RTL-simulated latency at nominal 50 MHz clock is 5,560 cycles (111.20 µs) for Tier 0/Tier 1 vs 5,688 cycles (113.76 µs) for Version A."* | ❌ *"Measured hardware board latency."* (Requires physical oscilloscope / timer verification). |
-| **Accuracy** | *"100% functional classification accuracy across the 6 demonstration sentences (18/18 tests passed)."* | ❌ *"100% FSC benchmark accuracy."* (Requires full 30,000+ audio/token FSC dataset evaluation). |
+| **Accuracy** | *"6/6 selected test vectors passed (18/18 tests passed across the 3 Softmax variants)."* | ❌ *"100% FSC benchmark accuracy."* (Requires full 30,000+ audio/token FSC dataset evaluation). |
 | **Speedup** | *"Integer-native Softmax achieves a 1.068x speedup (6.8%) in the Softmax stage and 2.25% end-to-end speedup, saving 128 cycles per inference."* | ❌ *"10x faster Transformer inference."* (Divider dominates execution time). |
 | **Division** | *"Normalization executes sequentially on a 24-bit restoring divider (192 divider cycles per attention row) with zero combinational division."* | ❌ *"Zero-overhead Softmax."* |
 | **Hardware Resources**| *"Architectural analysis predicts lower LE/memory footprint by removing 256-LUT and multipliers; final numbers pending Quartus post-fit."* | ❌ Claiming specific LE or DSP savings before running Quartus synthesis. |
 
 ---
 
-## 8. Teammate Handover & Immediate Action Items
+## 8. Teammate Handover Package & Immediate Action Items
 
+Recommended reading order for teammates:
+1. `docs/KNOWLEDGE_BASE.md` (Main architectural and project specification)
+2. `docs/IMPLEMENTATION_NOTES.md` (Engineering rules and scope definitions)
+3. `docs/TEST_PLAN.md` (Validation checklist and test vector inventory)
+4. `docs/modelsim_transcript.log` (ModelSim 10.5b execution proof)
+5. `docs/PINOUT_REQUIRED.md` (DE2-115 pinout requirement warning)
+
+### Immediate Action Checklist:
 ```text
-[ ] Task 1 (FPGA Synthesis): Open quartus/int8_transformer_de2_115.qpf in Quartus Prime Lite -> Run Start Compilation (Ctrl+L).
-[ ] Task 2 (Timing Analysis): Extract Fmax and Worst-case Setup Slack from TimeQuest report (int8_transformer_de2_115.sta.rpt).
-[ ] Task 3 (Resource Utilization): Record LE, Register, DSP, and M9K usage from Fitter report (int8_transformer_de2_115.fit.rpt).
-[ ] Task 4 (Board Programming): Connect DE2-115 via USB Blaster -> Program output_files/int8_transformer_de2_115.sof.
-[ ] Task 5 (UART Telemetry): Open PuTTY / Serial Monitor at 115,200 baud on COM port -> Capture UART output strings.
+[ ] Task 1 (Verify Pin Assignments): Import official Terasic DE2-115 pin assignments into quartus/int8_transformer_de2_115.qsf (see docs/PINOUT_REQUIRED.md).
+[ ] Task 2 (FPGA Synthesis): Open quartus/int8_transformer_de2_115.qpf in Quartus Prime Lite -> Run Start Compilation (Ctrl+L).
+[ ] Task 3 (Timing Analysis): Extract Fmax and Worst-case Setup Slack from TimeQuest report (int8_transformer_de2_115.sta.rpt).
+[ ] Task 4 (Resource Utilization): Record LE, Register, DSP, and M9K usage from Fitter report (int8_transformer_de2_115.fit.rpt).
+[ ] Task 5 (Board Programming): Connect DE2-115 via USB Blaster -> Program output_files/int8_transformer_de2_115.sof.
+[ ] Task 6 (UART Telemetry): Open PuTTY / Serial Monitor at 115,200 baud on COM port -> Capture UART output strings.
 ```
