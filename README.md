@@ -15,7 +15,7 @@ A complete, cycle-accurate, synthesizable hardware implementation of a **Transfo
 Transformer models traditionally require floating-point (FP32) arithmetic for self-attention, specifically in the exponential and normalization stages of **Softmax**. On resource-constrained edge FPGAs lacking hard FPUs, deploying attention requires either:
 1. **Conventional Fixed-Point Detour (Version A)**: De-scale the quantized scores $\to$ compute wider exponential approximation via large 256-entry lookup tables $\to$ accumulate $\to$ multi-cycle division $\to$ re-quantize back to INT8.
 2. **Integer-Native Base-2 Softmax (Proposed Version B)**: Transform $e^z = 2^{z \cdot \log_2(e)}$, keeping the exponentiation natively inside integer domain:
-   - **Tier 0 (Shift-Only Base-2)**: Pure linear shift-amount calculation and power-of-two barrel shifting. **Zero LUTs, zero DSPs/multipliers**.
+   - **Tier 0 (Shift-Only Base-2)**: Pure linear shift-amount calculation and power-of-two barrel shifting. **No exponential LUT ROMs, zero DSP multipliers** in the exponentiation datapath (Quartus post-fit chip resource measurement pending).
    - **Tier 1 (Base-2 + 16-LUT Refinement)**: Fixed-point Q4.4 decomposition ($q = t[7:4], f = t[3:0]$), indexing a tiny 16-entry fractional table for $2^{-f}$ followed by barrel shifting. High fidelity with minimal logic footprint.
 
 ```text
@@ -31,7 +31,7 @@ Transformer models traditionally require floating-point (FP32) arithmetic for se
           │                                             │
           ▼                                             ▼
  [Stage 2: Fixed-Point Descale]  (8 cycles)    [Stage 2: Folded Scale & Integer Base-2 Exp]
-          │                                             ├── Tier 0: Pure Barrel Shift (0 LUTs)
+          │                                             ├── Tier 0: Pure Barrel Shift (No ROM LUT)
           ▼                                             └── Tier 1: Barrel Shift + 16-LUT Refinement
  [Stage 3: 256-entry Exp LUT]    (8 cycles)             │
           │                                             ▼
@@ -41,7 +41,7 @@ Transformer models traditionally require floating-point (FP32) arithmetic for se
           ▼                                    [INT8 Normalized Probabilities A[i,j]]
  [Stage 5: Requantize to INT8]   (8 cycles)    
           │                                    * Eliminates Descaling & Requantization Stages
-          ▼                                    * Eliminates 256-entry LUT (0 LUTs in Tier 0)
+          ▼                                    * Eliminates 256-entry LUT ROM (No ROM table in Tier 0)
  [INT8 Normalized Probabilities A[i,j]]        * Exactly 128 Cycles Saved per Inference
 ==============================================================================================
 ```
@@ -68,7 +68,7 @@ All division operations in RTL execute sequentially via a **parameterized 24-bit
    1. Softmax Acceleration: Tier 0 and Tier 1 save 128 clock cycles per inference vs Version A (+128 cycle penalty).
    2. Division Hardware: All 3 variants use 24-bit multi-cycle restoring dividers (24 cycles/elem, NO combinational '/').
    3. Memory/Resource Trade-off:
-      - Tier 0: 0 LUTs, 0 DSPs (pure barrel shifter) -> Ideal for ultra-constrained edge FPGA.
+      - Tier 0: No exponential LUT ROM, zero DSP multipliers in exponentiation datapath (pure barrel shifter) -> Ideal for ultra-constrained edge FPGA (Quartus post-fit chip resource measurement pending).
       - Tier 1: 16-entry fractional LUT -> High precision with minimal LE footprint.
       - Version A: 256-entry exponential LUT + descaling + requantization stages (heavy resource & cycle overhead).
    4. Test Vector Verification: 18 / 18 Tests Passed (6/6 selected test vectors passed across all 3 variants).
@@ -137,6 +137,18 @@ $$\text{Tokens } [x_0..x_7] \xrightarrow{\text{ROM}} E \xrightarrow{W_Q, W_K, W_
 
 ## 🚀 Reproduction Instructions
 
+### 0. Run Python Numerical Validation Suite (MAE / MaxErr / KL)
+Reproduce the 1,000-vector floating-point vs. fixed-point/integer Softmax numerical comparison:
+```powershell
+python python/softmax_sim.py --vectors 1000 --length 8
+```
+Expected output (logged in `python_validation_output.txt`):
+- Version A: MAE = 0.100967, MaxErr = 0.401563, KL = 0.532291
+- Tier 0: MAE = 0.002312, MaxErr = 0.009236, KL = 0.016769
+- Tier 1: MAE = 0.000246, MaxErr = 0.000979, KL = 0.014876
+- Rank Inversions: **0.000%** across all 1,000 vectors
+- Restoring divider Python self-check: **PASS**
+
 ### 1. Run Complete ModelSim Simulation Regression
 Requires ModelSim Intel FPGA Edition installed:
 ```powershell
@@ -180,3 +192,4 @@ To maintain absolute academic and engineering honesty during review:
 - **Latency**: All numbers reported here represent **RTL-simulated latency at 50 MHz** ($5,560$ cycles = $111.20\ \mu\text{s}$ for Tier 0/1; $5,688$ cycles = $113.76\ \mu\text{s}$ for Version A), not post-fit board measurements.
 - **Accuracy**: Demonstrates **6/6 selected test vectors passed across all 3 Softmax variants (18/18 test cases)**, not the complete Fluent Speech Commands dataset.
 - **Division**: Verified 24-bit multi-cycle restoring divider (24 cycles/element, 192 divider cycles/row). Zero combinational division in RTL.
+- **FPGA Resources**: "Tier 0 eliminates the 256-entry exponential ROM lookup table and dedicated scaling multipliers from the exponentiation datapath (pure barrel shifter). Real FPGA Logic Elements (LEs) and registers are consumed by the FSM and sequential restoring divider. Post-fit LE/DSP/BRAM counts and Fmax are pending Quartus compilation."

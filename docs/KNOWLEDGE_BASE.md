@@ -45,11 +45,12 @@ Everything outside Softmax (Embedding lookup, Q/K/V projections, $QK^T$, $A \tim
    Version A (Conventional Detour)       Tier 0 (Integer-Native Shift)    Tier 1 (Integer-Native + 16-LUT)
 -------------------------------------   ------------------------------   ---------------------------------
   • Baseline architecture                 • Proposed ultra-lightweight     • Proposed precision-balanced
-  • 256-entry Exponential LUT             • Zero LUTs, Zero DSPs           • 16-entry Fractional LUT
+  • 256-entry Exponential LUT             • Shift-only (No exp-LUT ROM)    • 16-entry Fractional LUT
   • Separate Descaling stage (8 cyc)      • Pure power-of-two shift        • Q4.4 decomposition (q, frac)
   • Separate Requant stage (8 cyc)        • Eliminates descale/requant     • Eliminates descale/requant
   • Multi-cycle Restoring Divider         • Multi-cycle Restoring Divider  • Multi-cycle Restoring Divider
 ==================================================================================================
+*(Note: "Shift-only (No exp-LUT ROM)" refers to the algorithmic exponentiation datapath architecture which requires no lookup ROM tables and no DSP multipliers for exponent calculation. Standard FPGA Logic Elements (LEs) and registers are utilized for FSM control and divider logic; post-fit LE/DSP/BRAM counts are pending Quartus compilation).*
 ```
 
 ### 2.1 Version A: Conventional Fixed-Point Detour (Baseline)
@@ -64,7 +65,7 @@ Everything outside Softmax (Embedding lookup, Q/K/V projections, $QK^T$, $A \tim
 Exploits the base-2 mathematical property: $e^z = 2^{z \cdot \log_2(e)}$.
 1. **Find Max**: $m = \max_{j}(S_j)$ (8 cycles).
 2. **Shift Amount**: Linear scale $t = (-z) \times 23$ (where $23/16 \approx 1.4375 \approx \log_2(e)$).
-3. **Power-of-Two Barrel Shift**: Computes $w_j = 32768 \gg t[7:4]$, accumulating $\sum w_j$ (8 cycles). **Zero memory LUTs required**.
+3. **Power-of-Two Barrel Shift**: Computes $w_j = 32768 \gg t[7:4]$, accumulating $\sum w_j$ (8 cycles). **Zero exponential ROM lookup tables required** (an arithmetic barrel shifter replaces the 256-entry table; standard FPGA Logic Elements implement the shifter and FSM control).
 4. **Divider**: Feeds $w_j \times 127$ and $\sum w$ into the 24-bit restoring divider ($8 \times 24 = 192$ cycles).
 - **Total Softmax Latency**: **1,880 clock cycles** ($235\text{ cycles/row} \times 8\text{ rows}$).
 - **Hardware Savings**: Saves **128 cycles** per inference by eliminating the descaling and requantization stages.
@@ -95,7 +96,7 @@ $$t = -z \times \log_2(e) \implies 2^{-t} = 2^{-(q + f)} = 2^{-q} \times 2^{-f}$
 rtl/
 ├── transformer_pkg.sv      # Architectural parameters (L=8, D=32, LANES=8, CLASSES=6)
 ├── restoring_divider.v     # Parameterized 24-bit non-restoring/restoring divider FSM
-├── softmax_tier0.sv        # Tier 0 sequential FSM (0 LUTs, 0 DSPs, restoring divider)
+├── softmax_tier0.sv        # Tier 0 sequential FSM (shift-only exponentiation, no exp-LUT ROM, restoring divider)
 ├── softmax_tier1.sv        # Tier 1 sequential FSM (16-LUT, restoring divider)
 ├── softmax_detour_vA.sv    # Version A sequential FSM (descale, 256-LUT, requant, divider)
 ├── int8_mac_array.v        # 8-lane signed INT8 multiplier-accumulator with clear & comb_sum
@@ -149,6 +150,13 @@ Evaluated across 1,000 synthetic attention vectors against 64-bit floating-point
 | **Tier 1** | **0.000246** | **0.000979** | **0.014876** | 0.00% |
 
 *Key Takeaway*: Tier 1 provides nearly **$10\times$ lower numerical error than Tier 0** and over **$400\times$ lower error than Version A**, while requiring only a 16-word ROM and achieving the exact same 1,880-cycle latency as Tier 0.
+
+> [!TIP]
+> **Reproduction Command**: Teammates can reproduce these exact MAE/MaxErr/KL figures at any time from the root directory via:
+> ```powershell
+> python python/softmax_sim.py --vectors 1000 --length 8
+> ```
+> The reference output is logged in [`python_validation_output.txt`](file:///c:/Users/shail/OneDrive/Desktop/Docs/projects%20final%20copies/next%20gen/INT8_Transformer_DE2_115_Implementation/int8_transformer_de2_115/python_validation_output.txt). (Full FSC audio tokenization dataset accuracy remains open for future corpus-level benchmark evaluation).
 
 ---
 
@@ -215,7 +223,8 @@ When presenting or writing papers, adhere strictly to these claim boundaries:
 | **Accuracy** | *"6/6 selected test vectors passed (18/18 tests passed across the 3 Softmax variants)."* | ❌ *"100% FSC benchmark accuracy."* (Requires full 30,000+ audio/token FSC dataset evaluation). |
 | **Speedup** | *"Integer-native Softmax achieves a 1.068x speedup (6.8%) in the Softmax stage and 2.25% end-to-end speedup, saving 128 cycles per inference."* | ❌ *"10x faster Transformer inference."* (Divider dominates execution time). |
 | **Division** | *"Normalization executes sequentially on a 24-bit restoring divider (192 divider cycles per attention row) with zero combinational division."* | ❌ *"Zero-overhead Softmax."* |
-| **Hardware Resources**| *"Architectural analysis predicts lower LE/memory footprint by removing 256-LUT and multipliers; final numbers pending Quartus post-fit."* | ❌ Claiming specific LE or DSP savings before running Quartus synthesis. |
+| **Hardware Resources**| *"Architectural analysis predicts lower LE/memory footprint by removing 256-LUT ROM and scaling multipliers; final numbers pending Quartus post-fit."* | ❌ Claiming specific LE, DSP, or BRAM counts before running Quartus synthesis. |
+| **Resource Statement** | *"Tier 0 mathematically eliminates the 256-entry exponential ROM lookup table and multipliers from the exponentiation datapath."* | ❌ Calling '0 LUTs, 0 DSPs' a Quartus resource measurement (the FSM, registers, and sequential divider consume FPGA LEs; post-fit numbers are pending). |
 
 ---
 

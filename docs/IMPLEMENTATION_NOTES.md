@@ -19,7 +19,8 @@ Milestone sequence:
 ## Claim boundaries
 
 - ModelSim PASS: Fully verified (18/18 test vectors passed, 0 errors, 0 warnings; see `docs/modelsim_transcript.log`).
-- Softmax Numerical Error: Verified via Python PTQ simulation suite (Tier 1 MaxErr < 0.1%, MAE = 0.000246).
+- Softmax Numerical Error: Verified via Python PTQ simulation suite (Tier 1 MaxErr < 0.1%, MAE = 0.000246; reproduce via `python python/softmax_sim.py --vectors 1000 --length 8`).
+- Do NOT cite "0 LUTs, 0 DSPs" as a Quartus chip resource measurement; that statement refers strictly to the architectural elimination of the 256-entry ROM lookup table and multipliers in the exponentiation datapath. FPGA Logic Elements (LEs) and registers are consumed by the FSM and restoring divider, and post-fit resource counts are pending Quartus compilation.
 - Do NOT claim Quartus Fmax until TimeQuest reports it post-fit.
 - Do NOT claim FPGA power until a real physical measurement is made.
 - Do NOT claim full FSC dataset accuracy (currently 6/6 selected test vectors passed).
