@@ -236,6 +236,7 @@ Recommended reading order for teammates:
 3. `docs/TEST_PLAN.md` (Validation checklist and test vector inventory)
 4. `docs/modelsim_transcript.log` (ModelSim 10.5b execution proof)
 5. `docs/PINOUT_REQUIRED.md` (DE2-115 pinout requirement warning)
+6. `docs/INT8_Transformer_Knowledge_Transfer.pdf` (Knowledge transfer document & slide/summary PDF)
 
 ### Immediate Action Checklist:
 ```text
