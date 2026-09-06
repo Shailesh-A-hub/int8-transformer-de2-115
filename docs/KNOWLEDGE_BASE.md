@@ -155,7 +155,7 @@ Evaluated across 1,000 synthetic attention vectors against 64-bit floating-point
 ## 5. Quartus Prime Synthesis & Physical Verification Plan
 
 ### 5.1 Project Setup & QSF Warning
-The turnkey Quartus project is located in `quartus/int8_transformer_de2_115.qpf`.
+The prepared Quartus project skeleton is located in `quartus/int8_transformer_de2_115.qpf`.
 - **Target FPGA**: Cyclone IV E `EP4CE115F29C7`.
 - **Settings File**: `quartus/int8_transformer_de2_115.qsf` (**QSF requires verified DE2-115 pin assignments before compilation; see `docs/PINOUT_REQUIRED.md`**).
 - **Constraints**: `quartus/int8_transformer_de2_115.sdc` (50 MHz clock constraint on port `CLOCK_50`).
@@ -165,7 +165,7 @@ To complete the scientific proof, teammates must compile the project in Quartus 
 
 1. **Total Logic Elements (LEs)**: Baseline vs Tier 0 vs Tier 1.
 2. **Dedicated Logic Registers**.
-3. **Embedded Multiplier 9-bit Elements**: Multiplier savings in Tier 0/1.
+3. **Embedded multiplier elements / DSP blocks**: Multiplier savings in Tier 0/1.
 4. **Total Memory Bits (M9K Blocks)**: BRAM savings from eliminating 256-LUT.
 5. **TimeQuest $F_{\max}$**: Theoretical maximum operating frequency across Slow 85°C, Slow 0°C, and Fast 0°C timing corners.
 6. **Worst-Case Setup Slack @ 50 MHz**.
@@ -198,7 +198,7 @@ To complete the scientific proof, teammates must compile the project in Quartus 
 
 ### 6.2 The 4-Layer Demonstration Strategy
 For presentations and judging, avoid relying solely on "turning on an LED":
-1. **Layer 1: Application Demo**: Slide switch selects voice command $\to$ `KEY[1]` triggers inference $\to$ `HEX0` displays intent name.
+1. **Layer 1: Application Demo**: Slide switch selects test command $\to$ `KEY[1]` triggers inference $\to$ `HEX0` displays intent ID.
 2. **Layer 2: Telemetry Measurement**: Real-time UART packet streamed to PC terminal showing exact cycle counts and latency in microseconds.
 3. **Layer 3: Scientific Softmax Comparison**: Toggle `SW[1:0]` between Version A (`10`) and Tier 0 (`00`); show on the 7-segment display that cycle count drops from `5688` (`0x1638`) to `5560` (`0x15B8`), saving 128 cycles.
 4. **Layer 4: Hardware Engineering Proof**: Present Quartus post-fit LE, DSP, and BRAM reports proving architectural efficiency.

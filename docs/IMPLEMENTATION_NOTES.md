@@ -16,13 +16,13 @@ Milestone sequence:
 8. UART telemetry
 9. Quartus resource/timing measurement
 
-## Do not claim
+## Claim boundaries
 
-- ModelSim PASS until the Windows script has actually been run.
-- Quartus Fmax until TimeQuest reports it.
-- FPGA power until a real measurement is made.
-- FSC accuracy until real FSC examples are supplied and evaluated.
-- `<0.5%` Tier-1 error until the numerical suite demonstrates it.
+- ModelSim PASS: Fully verified (18/18 test vectors passed, 0 errors, 0 warnings; see `docs/modelsim_transcript.log`).
+- Softmax Numerical Error: Verified via Python PTQ simulation suite (Tier 1 MaxErr < 0.1%, MAE = 0.000246).
+- Do NOT claim Quartus Fmax until TimeQuest reports it post-fit.
+- Do NOT claim FPGA power until a real physical measurement is made.
+- Do NOT claim full FSC dataset accuracy (currently 6/6 selected test vectors passed).
 
 ## Baseline definition
 

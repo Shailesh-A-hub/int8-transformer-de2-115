@@ -109,7 +109,7 @@ $$\text{Tokens } [x_0..x_7] \xrightarrow{\text{ROM}} E \xrightarrow{W_Q, W_K, W_
 │   ├── cycle_counter.v                # Hardware inference cycle counter & latch
 │   ├── uart_tx.v, uart_rx.v           # 115,200-baud serial telemetry interface
 │   └── de2_115_top.sv                 # Top-level module with DE2-115 pinouts & 7-seg displays
-├── quartus/                           # Turnkey Quartus Prime synthesis & fitting project
+├── quartus/                           # Quartus Prime synthesis & fitting project skeleton
 │   ├── int8_transformer_de2_115.qpf  # Quartus project revision file
 │   ├── int8_transformer_de2_115.qsf  # Cyclone IV device settings (pinout requires verification; see docs/PINOUT_REQUIRED.md)
 │   ├── int8_transformer_de2_115.sdc  # 50.0 MHz SDC timing constraints & I/O delays
