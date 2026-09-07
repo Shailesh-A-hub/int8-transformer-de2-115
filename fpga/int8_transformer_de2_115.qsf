@@ -1,6 +1,7 @@
 # ==============================================================================
 # Quartus Settings File (QSF) for INT8 Transformer Accelerator on DE2-115
 # Target Device: Cyclone IV E EP4CE115F29C7
+# All design files located in this same folder
 # ==============================================================================
 
 set_global_assignment -name FAMILY "Cyclone IV E"
@@ -15,21 +16,20 @@ set_global_assignment -name ERROR_CHECK_FREQUENCY_DIVISOR 1
 set_global_assignment -name NOMINAL_CORE_SUPPLY_VOLTAGE 1.2V
 set_global_assignment -name STRATIX_DEVICE_IO_STANDARD "3.3-V LVTTL"
 
-# Source RTL Files
-set_global_assignment -name VERILOG_INCLUDE_FILE ../rtl/transformer_params.vh
-set_global_assignment -name SEARCH_PATH ../rtl
-set_global_assignment -name VERILOG_FILE ../rtl/weight_roms.v
-set_global_assignment -name VERILOG_FILE ../rtl/int8_mac_array.v
-set_global_assignment -name VERILOG_FILE ../rtl/restoring_divider.v
-set_global_assignment -name VERILOG_FILE ../rtl/softmax_tier0.v
-set_global_assignment -name VERILOG_FILE ../rtl/softmax_tier1.v
-set_global_assignment -name VERILOG_FILE ../rtl/softmax_detour_vA.v
-set_global_assignment -name VERILOG_FILE ../rtl/attention_engine.v
-set_global_assignment -name VERILOG_FILE ../rtl/cycle_counter.v
-set_global_assignment -name VERILOG_FILE ../rtl/uart_tx.v
-set_global_assignment -name VERILOG_FILE ../rtl/de2_115_top.v
+# Source RTL Files (All in current directory)
+set_global_assignment -name VERILOG_INCLUDE_FILE transformer_params.vh
+set_global_assignment -name SEARCH_PATH .
+set_global_assignment -name VERILOG_FILE weight_roms.v
+set_global_assignment -name VERILOG_FILE int8_mac_array.v
+set_global_assignment -name VERILOG_FILE restoring_divider.v
+set_global_assignment -name VERILOG_FILE softmax_tier0.v
+set_global_assignment -name VERILOG_FILE softmax_tier1.v
+set_global_assignment -name VERILOG_FILE softmax_detour_vA.v
+set_global_assignment -name VERILOG_FILE attention_engine.v
+set_global_assignment -name VERILOG_FILE cycle_counter.v
+set_global_assignment -name VERILOG_FILE uart_tx.v
+set_global_assignment -name VERILOG_FILE de2_115_top.v
 set_global_assignment -name SDC_FILE int8_transformer_de2_115.sdc
-
 
 # ------------------------------------------------------------------------------
 # Pin & Location Assignments for Terasic DE2-115

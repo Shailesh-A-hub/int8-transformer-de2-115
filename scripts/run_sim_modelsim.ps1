@@ -12,7 +12,7 @@ $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
 Write-Host "================================================================="
-Write-Host " Running ModelSim Simulation Regression for DE2-115 Transformer"
+Write-Host " Running Pure Verilog-2001 Simulation Regression (DE2-115)"
 Write-Host "================================================================="
 
 # Recreate work library cleanly
@@ -24,24 +24,24 @@ Write-Host "`n[1/5] Compiling and running Restoring Divider testbench..."
 & $vsim -c -do "run -all; quit -f" "work.tb_restoring_divider"
 
 Write-Host "`n[2/5] Compiling and running Softmax Tier 0 testbench..."
-& $vlog -work work -sv "rtl/restoring_divider.v" "rtl/softmax_tier0.sv" "tb/tb_softmax_tier0.sv"
+& $vlog -work work "rtl/restoring_divider.v" "rtl/softmax_tier0.v" "tb/tb_softmax_tier0.v"
 & $vsim -c -do "run -all; quit -f" "work.tb_softmax_tier0"
 
 Write-Host "`n[3/5] Compiling and running Softmax Tier 1 testbench..."
-& $vlog -work work -sv "rtl/restoring_divider.v" "rtl/softmax_tier1.sv" "tb/tb_softmax_tier1.sv"
+& $vlog -work work "rtl/restoring_divider.v" "rtl/softmax_tier1.v" "tb/tb_softmax_tier1.v"
 & $vsim -c -do "run -all; quit -f" "work.tb_softmax_tier1"
 
 Write-Host "`n[4/5] Compiling and running Attention Engine testbench..."
-& $vlog -work work -sv "rtl/transformer_pkg.sv" "rtl/weight_roms.v" "rtl/int8_mac_array.v" "rtl/restoring_divider.v" "rtl/softmax_tier0.sv" "rtl/softmax_tier1.sv" "rtl/softmax_detour_vA.sv" "rtl/attention_engine.sv" "tb/tb_attention_engine.sv"
+& $vlog -work work "+incdir+rtl" "rtl/weight_roms.v" "rtl/int8_mac_array.v" "rtl/restoring_divider.v" "rtl/softmax_tier0.v" "rtl/softmax_tier1.v" "rtl/softmax_detour_vA.v" "rtl/attention_engine.v" "tb/tb_attention_engine.v"
 & $vsim -c -do "run -all; quit -f" "work.tb_attention_engine"
 
 Write-Host "`n[5/5] Compiling and running Full Transformer End-to-End System Regression..."
-& $vlog -work work -sv "rtl/transformer_pkg.sv" "rtl/weight_roms.v" "rtl/int8_mac_array.v" "rtl/restoring_divider.v" "rtl/softmax_tier0.sv" "rtl/softmax_tier1.sv" "rtl/softmax_detour_vA.sv" "rtl/attention_engine.sv" "tb/tb_full_transformer.sv"
+& $vlog -work work "+incdir+rtl" "rtl/weight_roms.v" "rtl/int8_mac_array.v" "rtl/restoring_divider.v" "rtl/softmax_tier0.v" "rtl/softmax_tier1.v" "rtl/softmax_detour_vA.v" "rtl/attention_engine.v" "tb/tb_full_transformer.v"
 & $vsim -c -do "run -all; quit -f" "work.tb_full_transformer"
 
 Write-Host "`n[6/6] Verifying Top-Level DE2-115 Synthesis-Readiness..."
-& $vlog -work work -sv "rtl/transformer_pkg.sv" "rtl/weight_roms.v" "rtl/int8_mac_array.v" "rtl/restoring_divider.v" "rtl/softmax_tier0.sv" "rtl/softmax_tier1.sv" "rtl/softmax_detour_vA.sv" "rtl/attention_engine.sv" "rtl/cycle_counter.v" "rtl/uart_tx.v" "rtl/de2_115_top.sv"
+& $vlog -work work "+incdir+rtl" "rtl/weight_roms.v" "rtl/int8_mac_array.v" "rtl/restoring_divider.v" "rtl/softmax_tier0.v" "rtl/softmax_tier1.v" "rtl/softmax_detour_vA.v" "rtl/attention_engine.v" "rtl/cycle_counter.v" "rtl/uart_tx.v" "rtl/de2_115_top.v"
 
 Write-Host "`n================================================================="
-Write-Host " ALL MODELSIM REGRESSIONS & VERIFICATIONS COMPLETED SUCCESSFULLY!"
+Write-Host " ALL PURE VERILOG-2001 REGRESSIONS COMPLETED SUCCESSFULLY!"
 Write-Host "================================================================="

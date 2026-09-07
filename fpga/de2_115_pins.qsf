@@ -1,41 +1,13 @@
 # ==============================================================================
-# Quartus Settings File (QSF) for INT8 Transformer Accelerator on DE2-115
-# Target Device: Cyclone IV E EP4CE115F29C7
+# Pin & Location Assignments for Terasic DE2-115 (Cyclone IV EP4CE115F29C7)
+# Use via Quartus GUI: Assignments -> Import Assignments... -> select this file
 # ==============================================================================
 
 set_global_assignment -name FAMILY "Cyclone IV E"
 set_global_assignment -name DEVICE EP4CE115F29C7
-set_global_assignment -name TOP_LEVEL_ENTITY de2_115_top
-set_global_assignment -name ORIGINAL_QUARTUS_VERSION 18.1.0
-set_global_assignment -name LAST_QUARTUS_VERSION "18.1.0 Lite Edition"
-set_global_assignment -name PROJECT_OUTPUT_DIRECTORY output_files
-set_global_assignment -name MIN_CORE_JUNCTION_TEMP 0
-set_global_assignment -name MAX_CORE_JUNCTION_TEMP 85
-set_global_assignment -name ERROR_CHECK_FREQUENCY_DIVISOR 1
-set_global_assignment -name NOMINAL_CORE_SUPPLY_VOLTAGE 1.2V
 set_global_assignment -name STRATIX_DEVICE_IO_STANDARD "3.3-V LVTTL"
 
-# Source RTL Files
-set_global_assignment -name VERILOG_INCLUDE_FILE ../rtl/transformer_params.vh
-set_global_assignment -name SEARCH_PATH ../rtl
-set_global_assignment -name VERILOG_FILE ../rtl/weight_roms.v
-set_global_assignment -name VERILOG_FILE ../rtl/int8_mac_array.v
-set_global_assignment -name VERILOG_FILE ../rtl/restoring_divider.v
-set_global_assignment -name VERILOG_FILE ../rtl/softmax_tier0.v
-set_global_assignment -name VERILOG_FILE ../rtl/softmax_tier1.v
-set_global_assignment -name VERILOG_FILE ../rtl/softmax_detour_vA.v
-set_global_assignment -name VERILOG_FILE ../rtl/attention_engine.v
-set_global_assignment -name VERILOG_FILE ../rtl/cycle_counter.v
-set_global_assignment -name VERILOG_FILE ../rtl/uart_tx.v
-set_global_assignment -name VERILOG_FILE ../rtl/de2_115_top.v
-set_global_assignment -name SDC_FILE int8_transformer_de2_115.sdc
-
-
-# ------------------------------------------------------------------------------
-# Pin & Location Assignments for Terasic DE2-115
-# ------------------------------------------------------------------------------
-
-# 50 MHz Clock
+# 50 MHz On-Board Oscillator
 set_location_assignment PIN_Y2 -to CLOCK_50
 
 # Pushbuttons (Active-Low)

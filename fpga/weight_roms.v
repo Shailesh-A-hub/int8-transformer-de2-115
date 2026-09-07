@@ -1,8 +1,6 @@
 `timescale 1ns/1ps
 
-module weight_roms #(
-    parameter MEM_DIR = "mem/"
-)(
+module weight_roms (
     input  wire [2:0]  matrix_sel, // 0: W_Q, 1: W_K, 2: W_V, 3: W_cls, 4: Embedding
     input  wire [5:0]  row_idx,    // Row 0..31 (or 0..5 for cls, 0..15 for emb)
     input  wire [1:0]  chunk_idx,  // Chunk 0..3 (8 bytes per chunk = 32 dimensions)
@@ -16,11 +14,11 @@ module weight_roms #(
     reg signed [7:0] rom_emb [0:1023];
 
     initial begin
-        $readmemh({MEM_DIR, "W_Q.hex"}, rom_wq);
-        $readmemh({MEM_DIR, "W_K.hex"}, rom_wk);
-        $readmemh({MEM_DIR, "W_V.hex"}, rom_wv);
-        $readmemh({MEM_DIR, "W_cls.hex"}, rom_cls);
-        $readmemh({MEM_DIR, "embedding.hex"}, rom_emb);
+        $readmemh("W_Q.hex", rom_wq);
+        $readmemh("W_K.hex", rom_wk);
+        $readmemh("W_V.hex", rom_wv);
+        $readmemh("W_cls.hex", rom_cls);
+        $readmemh("embedding.hex", rom_emb);
     end
 
     wire [9:0] base_addr = {row_idx, chunk_idx, 3'b000};
