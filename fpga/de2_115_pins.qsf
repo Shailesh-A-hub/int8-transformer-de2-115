@@ -139,9 +139,9 @@ set_location_assignment PIN_AF17 -to HEX7[4]
 set_location_assignment PIN_AG18 -to HEX7[5]
 set_location_assignment PIN_AA14 -to HEX7[6]
 
-# RS-232 / UART
-set_location_assignment PIN_G9 -to UART_TXD
-set_location_assignment PIN_G12 -to UART_RXD
+# RS-232 / UART (Disabled per user request)
+# set_location_assignment PIN_G9 -to UART_TXD
+# set_location_assignment PIN_G12 -to UART_RXD
 
 # Optimization flags for high-performance arithmetic
 set_global_assignment -name CYCLONEII_OPTIMIZATION_TECHNIQUE SPEED
