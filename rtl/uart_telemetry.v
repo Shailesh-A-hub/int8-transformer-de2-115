@@ -113,6 +113,7 @@ module uart_telemetry #(
     localparam CTRL_CONVERT    = 3'd4;
     localparam CTRL_TRANSMIT   = 3'd5;
     localparam CTRL_RX_PAYLOAD = 3'd6;
+    localparam CTRL_BCD_WAIT   = 3'd7;
 
     reg [2:0] ctrl_state;
     reg [3:0] rx_payload_cnt;
@@ -261,7 +262,7 @@ module uart_telemetry #(
                         bcd_t0_sm_in     <= softmax_cycles[15:0];
                         bcd_t0_start     <= 1'b1;
                         msg_type         <= 2'd1; // Single Run Result
-                        ctrl_state       <= CTRL_CONVERT;
+                        ctrl_state       <= CTRL_BCD_WAIT;
                     end
                 end
 
@@ -335,12 +336,25 @@ module uart_telemetry #(
                         bcd_delta_start <= 1'b1;
 
                         msg_type   <= 2'd2; // Benchmark Report
-                        ctrl_state <= CTRL_CONVERT;
+                        ctrl_state <= CTRL_BCD_WAIT;
                     end
                 end
 
                 // -------------------------------------------------------------
-                // Wait 18 cycles for BCD converters, then build message buffer
+                // BCD Wait: Wait for 16-cycle Double-Dabble converters to complete
+                // -------------------------------------------------------------
+                CTRL_BCD_WAIT: begin
+                    if (msg_type == 2'd2) begin
+                        if (bcd_va_done)
+                            ctrl_state <= CTRL_CONVERT;
+                    end else begin
+                        if (bcd_t0_done)
+                            ctrl_state <= CTRL_CONVERT;
+                    end
+                end
+
+                // -------------------------------------------------------------
+                // Build formatted message buffer for transmission
                 // -------------------------------------------------------------
                 CTRL_CONVERT: begin
                     // Build the ASCII character array for transmission
@@ -350,7 +364,7 @@ module uart_telemetry #(
                     case (msg_type)
                         // Message 0: Boot & Help Banner
                         2'd0: begin
-                            tx_char_rom[0]  <= "\r"; tx_char_rom[1]  <= "\n";
+                            tx_char_rom[0]  <= 8'h0D; tx_char_rom[1]  <= 8'h0A;
                             tx_char_rom[2]  <= "=";  tx_char_rom[3]  <= "=";  tx_char_rom[4]  <= "=";
                             tx_char_rom[5]  <= "=";  tx_char_rom[6]  <= " ";  tx_char_rom[7]  <= "I";
                             tx_char_rom[8]  <= "N";  tx_char_rom[9]  <= "T";  tx_char_rom[10] <= "8";
@@ -362,7 +376,7 @@ module uart_telemetry #(
                             tx_char_rom[26] <= "2";  tx_char_rom[27] <= "-";  tx_char_rom[28] <= "1";
                             tx_char_rom[29] <= "1";  tx_char_rom[30] <= "5";  tx_char_rom[31] <= " ";
                             tx_char_rom[32] <= "=";  tx_char_rom[33] <= "=";  tx_char_rom[34] <= "=";
-                            tx_char_rom[35] <= "=";  tx_char_rom[36] <= "\r"; tx_char_rom[37] <= "\n";
+                            tx_char_rom[35] <= "=";  tx_char_rom[36] <= 8'h0D; tx_char_rom[37] <= 8'h0A;
                             tx_char_rom[38] <= "C";  tx_char_rom[39] <= "m";  tx_char_rom[40] <= "d";
                             tx_char_rom[41] <= "s";  tx_char_rom[42] <= ":";  tx_char_rom[43] <= " ";
                             tx_char_rom[44] <= "[";  tx_char_rom[45] <= "0";  tx_char_rom[46] <= "]";
@@ -379,13 +393,13 @@ module uart_telemetry #(
                             tx_char_rom[77] <= "B";  tx_char_rom[78] <= "e";  tx_char_rom[79] <= "n";
                             tx_char_rom[80] <= "c";  tx_char_rom[81] <= "h";  tx_char_rom[82] <= "m";
                             tx_char_rom[83] <= "a";  tx_char_rom[84] <= "r";  tx_char_rom[85] <= "k";
-                            tx_char_rom[86] <= "\r"; tx_char_rom[87] <= "\n";
+                            tx_char_rom[86] <= 8'h0D; tx_char_rom[87] <= 8'h0A;
                             tx_len <= 9'd88;
                         end
 
                         // Message 1: Single Run Result
                         2'd1: begin
-                            tx_char_rom[0]  <= "\r"; tx_char_rom[1]  <= "\n";
+                            tx_char_rom[0]  <= 8'h0D; tx_char_rom[1]  <= 8'h0A;
                             tx_char_rom[2]  <= "[";  tx_char_rom[3]  <= "R";  tx_char_rom[4]  <= "E";
                             tx_char_rom[5]  <= "S";  tx_char_rom[6]  <= "U";  tx_char_rom[7]  <= "L";
                             tx_char_rom[8]  <= "T";  tx_char_rom[9]  <= "]";  tx_char_rom[10] <= " ";
@@ -433,13 +447,13 @@ module uart_telemetry #(
                             tx_char_rom[75] <= to_ascii(d1_t0_tot);
                             tx_char_rom[76] <= to_ascii(d0_t0_tot);
                             tx_char_rom[77] <= " "; tx_char_rom[78] <= "c"; tx_char_rom[79] <= "y";
-                            tx_char_rom[80] <= "c"; tx_char_rom[81] <= "\r"; tx_char_rom[82] <= "\n";
+                            tx_char_rom[80] <= "c"; tx_char_rom[81] <= 8'h0D; tx_char_rom[82] <= 8'h0A;
                             tx_len <= 9'd83;
                         end
 
                         // Message 2: Side-by-Side Benchmark Report (Tier 0 vs. Version A)
                         2'd2: begin
-                            tx_char_rom[0]   <= "\r"; tx_char_rom[1]   <= "\n";
+                            tx_char_rom[0]   <= 8'h0D; tx_char_rom[1]   <= 8'h0A;
                             tx_char_rom[2]   <= "=";  tx_char_rom[3]   <= "=";  tx_char_rom[4]   <= "=";
                             tx_char_rom[5]   <= "=";  tx_char_rom[6]   <= "=";  tx_char_rom[7]   <= "=";
                             tx_char_rom[8]   <= "=";  tx_char_rom[9]   <= "=";  tx_char_rom[10]  <= "=";
@@ -455,8 +469,8 @@ module uart_telemetry #(
                             tx_char_rom[38]  <= "=";  tx_char_rom[39]  <= "=";  tx_char_rom[40]  <= "=";
                             tx_char_rom[41]  <= "=";  tx_char_rom[42]  <= "=";  tx_char_rom[43]  <= "=";
                             tx_char_rom[44]  <= "=";  tx_char_rom[45]  <= "=";  tx_char_rom[46]  <= "=";
-                            tx_char_rom[47]  <= "=";  tx_char_rom[48]  <= "=";  tx_char_rom[49]  <= "\r";
-                            tx_char_rom[50]  <= "\n";
+                            tx_char_rom[47]  <= "=";  tx_char_rom[48]  <= "=";  tx_char_rom[49]  <= 8'h0D;
+                            tx_char_rom[50]  <= 8'h0A;
                             tx_char_rom[51]  <= " ";  tx_char_rom[52]  <= " ";  tx_char_rom[53]  <= "I";
                             tx_char_rom[54]  <= "N";  tx_char_rom[55]  <= "T";  tx_char_rom[56]  <= "8";
                             tx_char_rom[57]  <= " ";  tx_char_rom[58]  <= "H";  tx_char_rom[59]  <= "A";
@@ -467,7 +481,7 @@ module uart_telemetry #(
                             tx_char_rom[72]  <= " ";  tx_char_rom[73]  <= "B";  tx_char_rom[74]  <= "E";
                             tx_char_rom[75]  <= "N";  tx_char_rom[76]  <= "C";  tx_char_rom[77]  <= "H";
                             tx_char_rom[78]  <= "M";  tx_char_rom[79]  <= "A";  tx_char_rom[80]  <= "R";
-                            tx_char_rom[81]  <= "K";  tx_char_rom[82]  <= "\r"; tx_char_rom[83]  <= "\n";
+                            tx_char_rom[81]  <= "K";  tx_char_rom[82]  <= 8'h0D; tx_char_rom[83]  <= 8'h0A;
                             tx_char_rom[84]  <= "=";  tx_char_rom[85]  <= "=";  tx_char_rom[86]  <= "=";
                             tx_char_rom[87]  <= "=";  tx_char_rom[88]  <= "=";  tx_char_rom[89]  <= "=";
                             tx_char_rom[90]  <= "=";  tx_char_rom[91]  <= "=";  tx_char_rom[92]  <= "=";
@@ -483,8 +497,8 @@ module uart_telemetry #(
                             tx_char_rom[120] <= "=";  tx_char_rom[121] <= "=";  tx_char_rom[122] <= "=";
                             tx_char_rom[123] <= "=";  tx_char_rom[124] <= "=";  tx_char_rom[125] <= "=";
                             tx_char_rom[126] <= "=";  tx_char_rom[127] <= "=";  tx_char_rom[128] <= "=";
-                            tx_char_rom[129] <= "=";  tx_char_rom[130] <= "=";  tx_char_rom[131] <= "\r";
-                            tx_char_rom[132] <= "\n";
+                            tx_char_rom[129] <= "=";  tx_char_rom[130] <= "=";  tx_char_rom[131] <= 8'h0D;
+                            tx_char_rom[132] <= 8'h0A;
 
                             // Line 1: Tier 0
                             tx_char_rom[133] <= " ";  tx_char_rom[134] <= " ";  tx_char_rom[135] <= "T";
@@ -501,7 +515,7 @@ module uart_telemetry #(
                             tx_char_rom[164] <= "x";  tx_char_rom[165] <= "=";  tx_char_rom[166] <= to_ascii(d3_t0_sm);
                             tx_char_rom[167] <= to_ascii(d2_t0_sm); tx_char_rom[168] <= to_ascii(d1_t0_sm);
                             tx_char_rom[169] <= to_ascii(d0_t0_sm); tx_char_rom[170] <= "c";
-                            tx_char_rom[171] <= "\r"; tx_char_rom[172] <= "\n";
+                            tx_char_rom[171] <= 8'h0D; tx_char_rom[172] <= 8'h0A;
 
                             // Line 2: Version A
                             tx_char_rom[173] <= " ";  tx_char_rom[174] <= " ";  tx_char_rom[175] <= "V";
@@ -518,7 +532,7 @@ module uart_telemetry #(
                             tx_char_rom[204] <= "a";  tx_char_rom[205] <= "x";  tx_char_rom[206] <= "=";
                             tx_char_rom[207] <= to_ascii(d3_va_sm);  tx_char_rom[208] <= to_ascii(d2_va_sm);
                             tx_char_rom[209] <= to_ascii(d1_va_sm);  tx_char_rom[210] <= to_ascii(d0_va_sm);
-                            tx_char_rom[211] <= "c";  tx_char_rom[212] <= "\r"; tx_char_rom[213] <= "\n";
+                            tx_char_rom[211] <= "c";  tx_char_rom[212] <= 8'h0D; tx_char_rom[213] <= 8'h0A;
 
                             // Line 3: Delta / Difference
                             tx_char_rom[214] <= " ";  tx_char_rom[215] <= " ";  tx_char_rom[216] <= "D";
@@ -533,8 +547,8 @@ module uart_telemetry #(
                             tx_char_rom[239] <= "l";  tx_char_rom[240] <= "e";  tx_char_rom[241] <= "s";
                             tx_char_rom[242] <= " ";  tx_char_rom[243] <= "F";  tx_char_rom[244] <= "A";
                             tx_char_rom[245] <= "S";  tx_char_rom[246] <= "T";  tx_char_rom[247] <= "E";
-                            tx_char_rom[248] <= "R";  tx_char_rom[249] <= "!";  tx_char_rom[250] <= "\r";
-                            tx_char_rom[251] <= "\n";
+                            tx_char_rom[248] <= "R";  tx_char_rom[249] <= "!";  tx_char_rom[250] <= 8'h0D;
+                            tx_char_rom[251] <= 8'h0A;
 
                             // Closing border
                             tx_char_rom[252] <= "=";  tx_char_rom[253] <= "=";  tx_char_rom[254] <= "=";
@@ -552,8 +566,8 @@ module uart_telemetry #(
                             tx_char_rom[288] <= "=";  tx_char_rom[289] <= "=";  tx_char_rom[290] <= "=";
                             tx_char_rom[291] <= "=";  tx_char_rom[292] <= "=";  tx_char_rom[293] <= "=";
                             tx_char_rom[294] <= "=";  tx_char_rom[295] <= "=";  tx_char_rom[296] <= "=";
-                            tx_char_rom[297] <= "=";  tx_char_rom[298] <= "=";  tx_char_rom[299] <= "\r";
-                            tx_char_rom[300] <= "\n";
+                            tx_char_rom[297] <= "=";  tx_char_rom[298] <= "=";  tx_char_rom[299] <= 8'h0D;
+                            tx_char_rom[300] <= 8'h0A;
                             tx_len <= 9'd301;
                         end
                         default: tx_len <= 9'd0;

@@ -2,7 +2,7 @@
 
 // =============================================================================
 // tb_uart_telemetry.v - End-to-End Simulation Testbench for UART Telemetry & Benchmark
-// Simulates PC Host sending UART commands ('0', 'a', 'b') and receives ASCII telemetry
+// Simulates PC Host sending UART commands ('0', '1', 'a', 'b', 'r') and receives ASCII telemetry
 // =============================================================================
 module tb_uart_telemetry;
 
@@ -106,26 +106,37 @@ module tb_uart_telemetry;
         key[0] = 1'b1; // De-assert reset
         #2000;
 
-        // Allow initial boot message to flush
-        #200000;
+        // Allow initial boot message to fully transmit (~8 ms at 115,200 baud)
+        #8000000;
 
-        $display("\n[TB HOST] >>> Sending UART Command: '0' (Trigger Tier 0 Inference)");
+        $display("\n[TB HOST] >>> Sending UART Command: '0' (Trigger Tier 0 Inference on Sentence 0)");
         send_uart_byte("0");
+        #8000000;
 
-        // Wait for inference and result string to transmit
-        #1500000;
+        $display("\n[TB HOST] >>> Sending UART Command: '1' (Trigger Tier 1 Inference on Sentence 0)");
+        send_uart_byte("1");
+        #8000000;
 
-        $display("\n[TB HOST] >>> Sending UART Command: 'a' (Trigger Version A Inference)");
+        $display("\n[TB HOST] >>> Sending UART Command: 'a' (Trigger Version A Inference on Sentence 0)");
         send_uart_byte("a");
+        #8000000;
 
-        // Wait for inference and result string to transmit
-        #1500000;
+        $display("\n[TB HOST] >>> Sending UART Command: 'r' (Custom Live Tokenized Voice Stream: Way 2)");
+        send_uart_byte("r");
+        send_uart_byte(8'd1); // Mode: Tier 1
+        send_uart_byte(8'd2); // Token 0: "turn"
+        send_uart_byte(8'd3); // Token 1: "on"
+        send_uart_byte(8'd4); // Token 2: "the"
+        send_uart_byte(8'd5); // Token 3: "lights"
+        send_uart_byte(8'd0); // Token 4: <pad>
+        send_uart_byte(8'd0); // Token 5: <pad>
+        send_uart_byte(8'd0); // Token 6: <pad>
+        send_uart_byte(8'd0); // Token 7: <pad>
+        #8000000;
 
         $display("\n[TB HOST] >>> Sending UART Command: 'b' (Trigger Automated Benchmark: Tier 0 vs Version A)");
         send_uart_byte("b");
-
-        // Wait for Tier 0 run + Version A run + Full Benchmark Report stream
-        #5500000;
+        #30000000;
 
         $display("\n================================================================================");
         $display("   UART TELEMETRY & HARDWARE BENCHMARK SIMULATION TEST PASSED SUCCESSFULLY!     ");

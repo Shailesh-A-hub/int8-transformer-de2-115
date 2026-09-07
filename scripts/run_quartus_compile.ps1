@@ -11,6 +11,7 @@ Write-Host "================================================================="
 # Locate Quartus bin directory
 $quartus_bin = $null
 $search_candidates = @(
+    "C:\altera_lite\24.1std\quartus\bin64",
     "C:\intelFPGA_lite\18.1\quartus\bin64",
     "C:\intelFPGA_lite\20.1\quartus\bin64",
     "C:\intelFPGA\18.1\quartus\bin64",
