@@ -13,7 +13,9 @@ module de2_115_top (
     output wire [6:0] HEX4,
     output wire [6:0] HEX5,
     output wire [6:0] HEX6,
-    output wire [6:0] HEX7
+    output wire [6:0] HEX7,
+    input  wire UART_RXD,
+    output wire UART_TXD
 );
     // Active-low push buttons
     wire rst_n = KEY[0];
@@ -64,28 +66,66 @@ module de2_115_top (
         end
     end
 
-    wire start_pulse = key_start_pulse | sw_change_pulse | powerup_pulse;
+    wire hw_start_pulse = key_start_pulse | sw_change_pulse | powerup_pulse;
 
-    // Token ID selector based on SW[4:2] (6 sentences)
-    reg [63:0] selected_tokens;
-    always @* begin
-        case (SW[4:2])
-            3'd0: selected_tokens = {8'd0, 8'd0, 8'd0, 8'd0, 8'd5, 8'd4, 8'd3, 8'd2};
-            3'd1: selected_tokens = {8'd0, 8'd0, 8'd0, 8'd0, 8'd5, 8'd4, 8'd7, 8'd2};
-            3'd2: selected_tokens = {8'd0, 8'd0, 8'd0, 8'd0, 8'd0, 8'd9, 8'd4, 8'd8};
-            3'd3: selected_tokens = {8'd0, 8'd0, 8'd0, 8'd0, 8'd0, 8'd9, 8'd4, 8'd11};
-            3'd4: selected_tokens = {8'd0, 8'd0, 8'd0, 8'd0, 8'd13, 8'd4, 8'd3, 8'd2};
-            3'd5: selected_tokens = {8'd0, 8'd0, 8'd0, 8'd0, 8'd13, 8'd4, 8'd7, 8'd2};
-            default: selected_tokens = {8'd0, 8'd0, 8'd0, 8'd0, 8'd5, 8'd4, 8'd3, 8'd2};
-        endcase
-    end
-
-    // Attention Accelerator Core
+    // Attention Accelerator Wires
     wire [2:0] intent_id;
     wire [6*32-1:0] logits_flat;
     wire [31:0] engine_softmax_cycles;
     wire engine_busy;
     wire engine_done;
+
+    // Cycle Counter Wires
+    wire [31:0] active_cycles;
+    wire [31:0] latched_cycles;
+
+    // UART Interactive Telemetry & Control Subsystem
+    wire eff_engine_start;
+    wire [1:0] eff_mode;
+    wire [2:0] eff_sentence;
+    wire [63:0] custom_tokens;
+    wire        custom_token_active;
+
+    uart_telemetry #(
+        .CLK_HZ(50000000),
+        .BAUD(115200)
+    ) u_telemetry (
+        .clk(CLOCK_50),
+        .rst_n(rst_n),
+        .uart_rxd(UART_RXD),
+        .uart_txd(UART_TXD),
+        .sw_mode(SW[1:0]),
+        .sw_sentence(SW[4:2]),
+        .hw_start_pulse(hw_start_pulse),
+        .engine_start(eff_engine_start),
+        .eff_mode(eff_mode),
+        .eff_sentence(eff_sentence),
+        .engine_busy(engine_busy),
+        .engine_done(engine_done),
+        .intent_id(intent_id),
+        .softmax_cycles(engine_softmax_cycles),
+        .total_cycles(latched_cycles),
+        .custom_tokens(custom_tokens),
+        .custom_token_active(custom_token_active)
+    );
+
+    // Token ID selector based on effective sentence (6 sentences) or custom UART sentence
+    reg [63:0] selected_tokens;
+    always @* begin
+        if (custom_token_active) begin
+            selected_tokens = custom_tokens;
+        end else begin
+            case (eff_sentence)
+                3'd0: selected_tokens = {8'd0, 8'd0, 8'd0, 8'd0, 8'd5, 8'd4, 8'd3, 8'd2};
+                3'd1: selected_tokens = {8'd0, 8'd0, 8'd0, 8'd0, 8'd5, 8'd4, 8'd7, 8'd2};
+                3'd2: selected_tokens = {8'd0, 8'd0, 8'd0, 8'd0, 8'd0, 8'd9, 8'd4, 8'd8};
+                3'd3: selected_tokens = {8'd0, 8'd0, 8'd0, 8'd0, 8'd0, 8'd9, 8'd4, 8'd11};
+                3'd4: selected_tokens = {8'd0, 8'd0, 8'd0, 8'd0, 8'd13, 8'd4, 8'd3, 8'd2};
+                3'd5: selected_tokens = {8'd0, 8'd0, 8'd0, 8'd0, 8'd13, 8'd4, 8'd7, 8'd2};
+                default: selected_tokens = {8'd0, 8'd0, 8'd0, 8'd0, 8'd5, 8'd4, 8'd3, 8'd2};
+            endcase
+        end
+    end
 
     attention_engine #(
         .L(8),
@@ -94,8 +134,8 @@ module de2_115_top (
     ) u_engine (
         .clk(CLOCK_50),
         .rst_n(rst_n),
-        .start(start_pulse),
-        .softmax_mode(SW[1:0]),
+        .start(eff_engine_start),
+        .softmax_mode(eff_mode),
         .token_ids(selected_tokens),
         .intent_id(intent_id),
         .logits(logits_flat),
@@ -105,13 +145,10 @@ module de2_115_top (
     );
 
     // Cycle Counter
-    wire [31:0] active_cycles;
-    wire [31:0] latched_cycles;
-
     cycle_counter u_counter (
         .clk(CLOCK_50),
         .rst_n(rst_n),
-        .start(start_pulse),
+        .start(eff_engine_start),
         .done(engine_done),
         .active(engine_busy),
         .cycles(active_cycles),
@@ -162,9 +199,10 @@ module de2_115_top (
 
     // 7-segment display assignments
     assign HEX0 = seg7({1'b0, latched_intent});
-    assign HEX1 = (SW[1:0] == 2'b00) ? seg7(4'h0) :
-                  (SW[1:0] == 2'b01) ? seg7(4'h1) : seg7(4'ha);
-    assign HEX2 = (SW[4:2] <= 3'd5) ? seg7({1'b0, SW[4:2]}) : 7'b011_1111;
+    assign HEX1 = (eff_mode == 2'b00) ? seg7(4'h0) :
+                  (eff_mode == 2'b01) ? seg7(4'h1) : seg7(4'ha);
+    assign HEX2 = custom_token_active ? seg7(4'hc) :
+                  (eff_sentence <= 3'd5) ? seg7({1'b0, eff_sentence}) : 7'b011_1111;
     assign HEX3 = 7'b011_1111;
     assign HEX4 = seg7(latched_cycles[3:0]);
     assign HEX5 = seg7(latched_cycles[7:4]);

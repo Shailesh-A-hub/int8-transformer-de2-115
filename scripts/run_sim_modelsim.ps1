@@ -39,8 +39,12 @@ Write-Host "`n[5/5] Compiling and running Full Transformer End-to-End System Reg
 & $vlog -work work "+incdir+rtl" "rtl/weight_roms.v" "rtl/int8_mac_array.v" "rtl/restoring_divider.v" "rtl/softmax_tier0.v" "rtl/softmax_tier1.v" "rtl/softmax_detour_vA.v" "rtl/attention_engine.v" "tb/tb_full_transformer.v"
 & $vsim -c -do "run -all; quit -f" "work.tb_full_transformer"
 
-Write-Host "`n[6/6] Verifying Top-Level DE2-115 Synthesis-Readiness..."
-& $vlog -work work "+incdir+rtl" "rtl/weight_roms.v" "rtl/int8_mac_array.v" "rtl/restoring_divider.v" "rtl/softmax_tier0.v" "rtl/softmax_tier1.v" "rtl/softmax_detour_vA.v" "rtl/attention_engine.v" "rtl/cycle_counter.v" "rtl/uart_tx.v" "rtl/de2_115_top.v"
+Write-Host "`n[6/7] Verifying Top-Level DE2-115 Synthesis-Readiness with UART Subsystem..."
+& $vlog -work work "+incdir+rtl" "rtl/weight_roms.v" "rtl/int8_mac_array.v" "rtl/restoring_divider.v" "rtl/softmax_tier0.v" "rtl/softmax_tier1.v" "rtl/softmax_detour_vA.v" "rtl/attention_engine.v" "rtl/cycle_counter.v" "rtl/bin2bcd16.v" "rtl/uart_rx.v" "rtl/uart_tx.v" "rtl/uart_telemetry.v" "rtl/de2_115_top.v"
+
+Write-Host "`n[7/7] Compiling and running End-to-End UART Telemetry & Benchmark Testbench..."
+& $vlog -work work "+incdir+rtl" "rtl/weight_roms.v" "rtl/int8_mac_array.v" "rtl/restoring_divider.v" "rtl/softmax_tier0.v" "rtl/softmax_tier1.v" "rtl/softmax_detour_vA.v" "rtl/attention_engine.v" "rtl/cycle_counter.v" "rtl/bin2bcd16.v" "rtl/uart_rx.v" "rtl/uart_tx.v" "rtl/uart_telemetry.v" "rtl/de2_115_top.v" "tb/tb_uart_telemetry.v"
+& $vsim -c -do "run -all; quit -f" "work.tb_uart_telemetry"
 
 Write-Host "`n================================================================="
 Write-Host " ALL PURE VERILOG-2001 REGRESSIONS COMPLETED SUCCESSFULLY!"

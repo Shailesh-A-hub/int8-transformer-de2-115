@@ -28,6 +28,9 @@ set_global_assignment -name VERILOG_FILE softmax_detour_vA.v
 set_global_assignment -name VERILOG_FILE attention_engine.v
 set_global_assignment -name VERILOG_FILE cycle_counter.v
 set_global_assignment -name VERILOG_FILE uart_tx.v
+set_global_assignment -name VERILOG_FILE uart_rx.v
+set_global_assignment -name VERILOG_FILE bin2bcd16.v
+set_global_assignment -name VERILOG_FILE uart_telemetry.v
 set_global_assignment -name VERILOG_FILE de2_115_top.v
 set_global_assignment -name SDC_FILE int8_transformer_de2_115.sdc
 
@@ -167,9 +170,9 @@ set_location_assignment PIN_AF17 -to HEX7[4]
 set_location_assignment PIN_AG18 -to HEX7[5]
 set_location_assignment PIN_AA14 -to HEX7[6]
 
-# RS-232 / UART (Disabled per user request)
-# set_location_assignment PIN_G9 -to UART_TXD
-# set_location_assignment PIN_G12 -to UART_RXD
+# CP2102 on JP5 GPIO Header (3.3V TTL)
+set_location_assignment PIN_AB22 -to UART_RXD
+set_location_assignment PIN_AC15 -to UART_TXD
 
 # Optimization flags for high-performance arithmetic
 set_global_assignment -name CYCLONEII_OPTIMIZATION_TECHNIQUE SPEED
