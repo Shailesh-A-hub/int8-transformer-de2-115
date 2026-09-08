@@ -1,0 +1,1204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>INT8 Transformer Attention Accelerator with Integer-Native Softmax</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap');
+    
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #080D1A;
+      color: #E2E8F0;
+      overflow: hidden;
+      user-select: none;
+    }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    
+    /* Elegant Subtle Glows */
+    .glow-cyan { box-shadow: 0 0 30px -5px rgba(6, 182, 212, 0.2); }
+    .glow-emerald { box-shadow: 0 0 30px -5px rgba(16, 185, 129, 0.2); }
+    .glow-purple { box-shadow: 0 0 30px -5px rgba(168, 85, 247, 0.2); }
+    
+    /* Slide Animation */
+    .slide {
+      opacity: 0;
+      visibility: hidden;
+      transform: scale(0.98);
+      transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.3s;
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding-right: 4px;
+    }
+    .slide.active {
+      opacity: 1;
+      visibility: visible;
+      transform: scale(1);
+      z-index: 10;
+    }
+
+    .matrix-cell {
+      transition: all 0.2s ease;
+    }
+    .matrix-cell:hover {
+      background-color: rgba(6, 182, 212, 0.25);
+      border-color: #06B6D4;
+    }
+
+    /* Mathematical Fraction Layout */
+    .math-frac {
+      display: inline-flex;
+      flex-direction: column;
+      vertical-align: middle;
+      text-align: center;
+      padding: 0 4px;
+    }
+    .math-num {
+      border-bottom: 1.5px solid currentColor;
+      padding-bottom: 2px;
+      line-height: 1.1;
+    }
+    .math-den {
+      padding-top: 2px;
+      line-height: 1.1;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: #0B132B; }
+    ::-webkit-scrollbar-thumb { background: #1E293B; border-radius: 3px; }
+  </style>
+</head>
+<body class="h-screen w-screen flex flex-col bg-[#080D1A] text-slate-100">
+
+  <!-- ===================================================================== -->
+  <!-- Top Global Header -->
+  <!-- ===================================================================== -->
+  <header class="h-14 border-b border-slate-800/80 bg-[#0B1326]/90 backdrop-blur px-6 flex items-center justify-between z-50 flex-shrink-0">
+    <div class="flex items-center gap-3">
+      <div class="h-8 w-8 rounded-lg bg-gradient-to-tr from-cyan-500 via-sky-400 to-emerald-400 flex items-center justify-center font-bold text-xs text-slate-950 shadow-md">
+        AI
+      </div>
+      <div>
+        <h1 class="text-sm font-semibold text-slate-200 tracking-wide">INT8 Transformer Attention Accelerator</h1>
+        <p class="text-[10px] text-cyan-400/80 mono">Integer-Native Softmax Theory &bull; Mathematical Formulation</p>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="flex items-center gap-3">
+      <div class="flex items-center bg-slate-900/90 border border-slate-800 rounded-lg p-1 text-xs mono">
+        <button onclick="prevSlide()" class="px-2.5 py-1 hover:bg-slate-800 text-slate-300 hover:text-cyan-300 rounded transition flex items-center gap-1" title="Previous Slide (Left Arrow / PgUp)">
+          <span>&lsaquo;</span> Prev
+        </button>
+        <span class="px-3 py-1 text-slate-400 border-x border-slate-800">
+          <span id="current-slide-num" class="text-cyan-400 font-bold">1</span> / <span id="total-slides-num">11</span>
+        </span>
+        <button onclick="nextSlide()" class="px-2.5 py-1 hover:bg-slate-800 text-slate-300 hover:text-cyan-300 rounded transition flex items-center gap-1" title="Next Slide (Right Arrow / Space / PgDn)">
+          Next <span>&rsaquo;</span>
+        </button>
+      </div>
+
+      <button onclick="toggleOverview()" class="p-2 bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 rounded-lg text-xs flex items-center gap-1.5 transition" title="Slide Grid Overview (G)">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+        <span class="hidden sm:inline">Overview</span>
+      </button>
+
+      <button onclick="toggleFullscreen()" class="p-2 bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 rounded-lg text-xs flex items-center gap-1.5 transition" title="Toggle Fullscreen (F)">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ===================================================================== -->
+  <!-- Main Slides Viewport -->
+  <!-- ===================================================================== -->
+  <main id="presentation-viewport" class="flex-1 relative overflow-hidden p-3 sm:p-5 lg:p-6">
+
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <!-- SLIDE 1: Title Slide -->
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <div class="slide active items-center justify-center text-center px-4" data-slide="1">
+      <div class="w-full max-w-4xl border border-cyan-500/30 rounded-2xl p-8 sm:p-14 bg-gradient-to-b from-[#0E1A33]/90 to-[#080D1A]/90 glow-cyan relative overflow-hidden backdrop-blur">
+        <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-300 text-xs tracking-wider uppercase mb-6 font-medium">
+          <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+          Edge Transformer Acceleration
+        </div>
+
+        <h1 class="text-3xl sm:text-5xl lg:text-6xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-sky-200 to-emerald-300 tracking-tight leading-tight mb-4">
+          INT8 Transformer Attention Accelerator with Integer-Native Softmax
+        </h1>
+
+        <div class="w-36 h-1 bg-gradient-to-r from-cyan-500 via-sky-400 to-emerald-400 mx-auto rounded-full mb-8"></div>
+
+        <div class="text-base sm:text-lg text-slate-300 font-medium tracking-wide mb-8">
+          Pradeep P &bull; Shailesh A &bull; Hamsavarthan
+        </div>
+
+        <div class="pt-6 border-t border-slate-800/80 flex items-center justify-center gap-4 text-xs text-slate-400 mono">
+          <span class="px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-cyan-300">Algorithmic Formulation</span>
+          <span>&bull;</span>
+          <span class="px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-emerald-300">Base-2 Log2 Transformation</span>
+          <span>&bull;</span>
+          <span class="px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-purple-300">Hardware Simplification</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <!-- SLIDE 2: Problem: Transformer Attention is Expensive on FPGA -->
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="2">
+      <div class="mb-3">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-1">Motivation &amp; Bottleneck Analysis</div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-100">Problem: Transformer Attention is Expensive on FPGA</h2>
+        <p class="text-sm text-slate-400 mt-1">
+          Transformer models provide strong language understanding, but their attention mechanism contains hardware-expensive operations.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 items-stretch">
+        <!-- Left: Why Softmax is Expensive -->
+        <div class="lg:col-span-5 rounded-2xl border border-rose-500/30 bg-[#1F0E17]/70 p-6 flex flex-col justify-between">
+          <div>
+            <h3 class="text-lg font-bold text-rose-300 mb-4 flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-rose-400"></span> Why Softmax is expensive
+            </h3>
+            <ul class="space-y-4 text-sm text-slate-300">
+              <li class="flex items-start gap-3 p-2.5 rounded-lg bg-slate-900/60 border border-slate-800">
+                <span class="text-rose-400 font-bold">&bull;</span>
+                <div>
+                  <strong class="text-slate-100">Exponential calculation</strong>
+                  <div class="text-xs text-slate-400 mt-0.5">Non-linear exponential e<sup>x</sup> requires heavy floating-point logic or large lookup tables</div>
+                </div>
+              </li>
+              <li class="flex items-start gap-3 p-2.5 rounded-lg bg-slate-900/60 border border-slate-800">
+                <span class="text-rose-400 font-bold">&bull;</span>
+                <div>
+                  <strong class="text-slate-100">Accumulation</strong>
+                  <div class="text-xs text-slate-400 mt-0.5">Row-wise summation of dynamic range exponentials</div>
+                </div>
+              </li>
+              <li class="flex items-start gap-3 p-2.5 rounded-lg bg-slate-900/60 border border-slate-800">
+                <span class="text-rose-400 font-bold">&bull;</span>
+                <div>
+                  <strong class="text-slate-100">Division / normalization</strong>
+                  <div class="text-xs text-slate-400 mt-0.5">Iterative restoring divider adds multi-cycle latency</div>
+                </div>
+              </li>
+              <li class="flex items-start gap-3 p-2.5 rounded-lg bg-slate-900/60 border border-slate-800">
+                <span class="text-rose-400 font-bold">&bull;</span>
+                <div>
+                  <strong class="text-slate-100">Fixed-point scaling and requantization</strong>
+                  <div class="text-xs text-slate-400 mt-0.5">Requires conversion stages between INT8 and real fixed-point scales</div>
+                </div>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Right: Flow Diagram -->
+        <div class="lg:col-span-7 rounded-2xl border border-slate-800 bg-[#0C152B]/90 p-5 flex flex-col justify-between">
+          <div class="text-xs font-bold text-cyan-300 uppercase tracking-wider mb-2">Attention Inference Pipeline</div>
+          <div class="space-y-1.5 mono text-xs">
+            <div class="flex items-center justify-between p-2 rounded bg-slate-900 border border-slate-800">
+              <span class="font-bold text-slate-200">Input Tokens</span>
+              <span class="text-slate-400 text-[11px]">raw text input</span>
+            </div>
+            <div class="text-center text-slate-600 text-[10px]">&darr;</div>
+            <div class="flex items-center justify-between p-2 rounded bg-slate-900 border border-slate-800">
+              <span class="font-bold text-slate-200">Embedding</span>
+              <span class="text-slate-400 text-[11px]">Convert tokens to dense vectors</span>
+            </div>
+            <div class="text-center text-slate-600 text-[10px]">&darr;</div>
+            <div class="flex items-center justify-between p-2 rounded bg-slate-900 border border-slate-800">
+              <span class="font-bold text-slate-200">Q / K / V</span>
+              <span class="text-slate-400 text-[11px]">Query, Key, Value linear transformations</span>
+            </div>
+            <div class="text-center text-slate-600 text-[10px]">&darr;</div>
+            <div class="flex items-center justify-between p-2 rounded bg-slate-900 border border-slate-800">
+              <span class="font-bold text-slate-200">QK<sup>T</sup></span>
+              <span class="text-slate-400 text-[11px]">Matrix multiplication of Query and Transposed Key</span>
+            </div>
+            <div class="text-center text-rose-500 text-[10px]">&darr;</div>
+            <!-- Bottleneck Highlight -->
+            <div class="flex items-center justify-between p-2.5 rounded-lg bg-rose-500/20 border-2 border-rose-500/60 shadow-lg">
+              <span class="font-bold text-rose-200 text-sm">Softmax</span>
+              <span class="text-rose-300 font-bold text-xs uppercase tracking-wider">&larr; Hardware Bottleneck</span>
+            </div>
+            <div class="text-center text-slate-600 text-[10px]">&darr;</div>
+            <div class="flex items-center justify-between p-2 rounded bg-slate-900 border border-slate-800">
+              <span class="font-bold text-slate-200">A &middot; V</span>
+              <span class="text-slate-400 text-[11px]">Attention Weighted Matrix Multiplication</span>
+            </div>
+            <div class="text-center text-slate-600 text-[10px]">&darr;</div>
+            <div class="flex items-center justify-between p-2 rounded bg-slate-900 border border-slate-800">
+              <span class="font-bold text-slate-200">Mean Pooling</span>
+              <span class="text-slate-400 text-[11px]">Aggregating sequence vectors</span>
+            </div>
+            <div class="text-center text-slate-600 text-[10px]">&darr;</div>
+            <div class="flex items-center justify-between p-2 rounded bg-slate-900 border border-slate-800">
+              <span class="font-bold text-slate-200">Intent Classification</span>
+              <span class="text-slate-400 text-[11px]">Predicting sentence intent</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <!-- SLIDE 3: From Sentence to Embeddings -->
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="3">
+      <div class="mb-3">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-1">Stage 1: Input Ingestion</div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-100">From Sentence to Embeddings</h2>
+        <div class="text-sm text-cyan-300 mono mt-1 font-medium">Input Sentence: &ldquo;Turn on the lights.&rdquo;</div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 items-stretch">
+        <!-- 1. Tokenization Left -->
+        <div class="rounded-2xl border border-cyan-500/30 bg-[#0E1A33]/80 p-6 flex flex-col justify-between">
+          <div>
+            <h3 class="text-lg font-bold text-cyan-300 mb-3">1. Tokenization</h3>
+            <p class="text-sm text-slate-300 mb-4">
+              The sentence is split into individual tokens:
+            </p>
+            <div class="flex items-center gap-2 text-base font-semibold mono text-slate-200 mb-6 bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+              <span class="text-cyan-400">Turn</span> &rarr; 
+              <span class="text-cyan-400">on</span> &rarr; 
+              <span class="text-cyan-400">the</span> &rarr; 
+              <span class="text-cyan-400">lights</span>
+            </div>
+            <p class="text-sm text-slate-300 mb-3">
+              For illustration, we assign token IDs:
+            </p>
+            <div class="flex items-center gap-3 text-lg font-bold mono text-emerald-400">
+              <span class="px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30">[3]</span>
+              <span class="px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30">[7]</span>
+              <span class="px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30">[2]</span>
+              <span class="px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30">[12]</span>
+            </div>
+          </div>
+          <div class="text-xs text-slate-400 mono pt-4 border-t border-slate-800">
+            Vocabulary mapping is static and stored in on-chip ROM.
+          </div>
+        </div>
+
+        <!-- 2. Embedding Lookup Right -->
+        <div class="rounded-2xl border border-emerald-500/30 bg-[#0B211C]/80 p-6 flex flex-col justify-between">
+          <div>
+            <h3 class="text-lg font-bold text-emerald-300 mb-3">2. Embedding Lookup</h3>
+            <p class="text-sm text-slate-300 mb-4">
+              Each token ID is mapped to a learned numerical vector using an <strong class="text-emerald-300">embedding table</strong>.
+            </p>
+            <div class="space-y-2.5 mono text-xs">
+              <div class="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 flex items-center justify-between">
+                <span class="font-bold text-slate-200">Turn (ID 3)</span>
+                <span class="text-emerald-300">&rarr; [e<sub>1</sub>, e<sub>2</sub>, e<sub>3</sub>, ... , e<sub>32</sub>]</span>
+              </div>
+              <div class="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 flex items-center justify-between">
+                <span class="font-bold text-slate-200">On (ID 7)</span>
+                <span class="text-emerald-300">&rarr; [e<sub>1</sub>, e<sub>2</sub>, e<sub>3</sub>, ... , e<sub>32</sub>]</span>
+              </div>
+              <div class="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 flex items-center justify-between">
+                <span class="font-bold text-slate-200">The (ID 2)</span>
+                <span class="text-emerald-300">&rarr; [e<sub>1</sub>, e<sub>2</sub>, e<sub>3</sub>, ... , e<sub>32</sub>]</span>
+              </div>
+              <div class="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 flex items-center justify-between">
+                <span class="font-bold text-slate-200">Lights (ID 12)</span>
+                <span class="text-emerald-300">&rarr; [e<sub>1</sub>, e<sub>2</sub>, e<sub>3</sub>, ... , e<sub>32</sub>]</span>
+              </div>
+            </div>
+          </div>
+          <div class="text-xs text-slate-400 mono pt-4 border-t border-slate-800">
+            Produces INT8 dense matrix X (8 tokens &times; 32 dimensions).
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <!-- SLIDE 4: From Embeddings to Q, K and V -->
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="4">
+      <div class="mb-3">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-1">Stage 2: Linear Projections</div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-100">From Embeddings to Q, K and V</h2>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 items-stretch">
+        <!-- 3 Representations Left -->
+        <div class="lg:col-span-7 rounded-2xl border border-cyan-500/30 bg-[#0E1A33]/80 p-6 flex flex-col justify-between">
+          <div>
+            <div class="text-xs font-bold text-cyan-300 uppercase tracking-wider mb-2">Input Transformation</div>
+            <p class="text-sm text-slate-300 mb-4">
+              The embedding matrix <strong class="text-slate-100">X</strong> is transformed into three representations:
+            </p>
+
+            <div class="space-y-4">
+              <div class="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800">
+                <div class="text-sm font-bold text-cyan-300">Query (Q)</div>
+                <div class="text-xs text-slate-300 italic mt-0.5">&ldquo;What information am I looking for?&rdquo;</div>
+              </div>
+              <div class="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800">
+                <div class="text-sm font-bold text-emerald-300">Key (K)</div>
+                <div class="text-xs text-slate-300 italic mt-0.5">&ldquo;What information does each token represent?&rdquo;</div>
+              </div>
+              <div class="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800">
+                <div class="text-sm font-bold text-purple-300">Value (V)</div>
+                <div class="text-xs text-slate-300 italic mt-0.5">&ldquo;What information should actually be passed forward?&rdquo;</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Formulas Right -->
+        <div class="lg:col-span-5 rounded-2xl border border-purple-500/30 bg-[#160E2E]/80 p-6 flex flex-col justify-between">
+          <div>
+            <div class="text-xs font-bold text-purple-300 uppercase tracking-wider mb-4">Linear Projection Equations</div>
+            <div class="space-y-3 mono text-base">
+              <div class="p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-cyan-300 font-bold">
+                Q = X &middot; W<sub>Q</sub>
+              </div>
+              <div class="p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-emerald-300 font-bold">
+                K = X &middot; W<sub>K</sub>
+              </div>
+              <div class="p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-purple-300 font-bold">
+                V = X &middot; W<sub>V</sub>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4 pt-4 border-t border-purple-500/20 text-xs text-slate-300 mono space-y-1">
+            <div><strong>X</strong> = input embedding matrix</div>
+            <div><strong>WQ, WK, WV</strong> = learned weight matrices</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <!-- SLIDE 5: Attention Scores -->
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="5">
+      <div class="mb-3">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-1">Stage 3: Token-to-Token Affinity</div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-100">Attention Scores</h2>
+        <p class="text-sm text-slate-400 mt-1">Measure Which Tokens Should Attend to Each Other &bull; <strong class="text-cyan-300 mono">S = Q &middot; K<sup>T</sup></strong></p>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 items-stretch">
+        <!-- Interactive 4x4 Score Matrix -->
+        <div class="lg:col-span-7 rounded-2xl border border-cyan-500/30 bg-[#0E1A33]/80 p-6 flex flex-col justify-between">
+          <div>
+            <div class="text-xs font-bold text-cyan-300 uppercase tracking-wider mb-3">Attention Score Matrix S</div>
+            <table class="w-full text-center mono text-sm border-collapse">
+              <thead>
+                <tr class="text-slate-400 text-xs border-b border-slate-800">
+                  <th class="p-2"></th>
+                  <th class="p-2">Turn</th>
+                  <th class="p-2">On</th>
+                  <th class="p-2">The</th>
+                  <th class="p-2">Lights</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800">
+                <tr class="bg-cyan-500/10 font-bold">
+                  <td class="p-3 text-left text-cyan-300">Turn</td>
+                  <td class="p-3 matrix-cell text-emerald-400 font-extrabold text-base border border-emerald-500/30 rounded">5</td>
+                  <td class="p-3 matrix-cell border border-transparent">2</td>
+                  <td class="p-3 matrix-cell border border-transparent">1</td>
+                  <td class="p-3 matrix-cell border border-transparent">3</td>
+                </tr>
+                <tr>
+                  <td class="p-3 text-left text-slate-300 font-bold">On</td>
+                  <td class="p-3 matrix-cell border border-transparent">2</td>
+                  <td class="p-3 matrix-cell text-emerald-400 font-extrabold text-base border border-emerald-500/30 rounded">5</td>
+                  <td class="p-3 matrix-cell border border-transparent">1</td>
+                  <td class="p-3 matrix-cell border border-transparent">4</td>
+                </tr>
+                <tr>
+                  <td class="p-3 text-left text-slate-300 font-bold">The</td>
+                  <td class="p-3 matrix-cell border border-transparent">1</td>
+                  <td class="p-3 matrix-cell border border-transparent">1</td>
+                  <td class="p-3 matrix-cell text-emerald-400 font-extrabold text-base border border-emerald-500/30 rounded">4</td>
+                  <td class="p-3 matrix-cell border border-transparent">2</td>
+                </tr>
+                <tr>
+                  <td class="p-3 text-left text-slate-300 font-bold">Lights</td>
+                  <td class="p-3 matrix-cell border border-transparent">3</td>
+                  <td class="p-3 matrix-cell border border-transparent">4</td>
+                  <td class="p-3 matrix-cell border border-transparent">2</td>
+                  <td class="p-3 matrix-cell text-emerald-400 font-extrabold text-base border border-emerald-500/30 rounded">6</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="text-xs text-slate-400 mono pt-3 border-t border-slate-800">
+            Computed via 8-lane INT8 MAC array with &gt;&gt; 15 fixed-point score scaling.
+          </div>
+        </div>
+
+        <!-- Row 1 Focus & Explanation Right -->
+        <div class="lg:col-span-5 rounded-2xl border border-slate-800 bg-[#0C152B]/80 p-6 flex flex-col justify-between">
+          <div>
+            <h3 class="text-base font-bold text-slate-200 mb-3">Relevance Interpretation</h3>
+            <p class="text-sm text-slate-300 leading-relaxed mb-6">
+              A larger score means <strong class="text-emerald-300">stronger relevance</strong> between the two tokens.
+            </p>
+
+            <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 text-center">
+              <div class="text-xs text-slate-400 mono mb-1">Row 1 (Query = &ldquo;Turn&rdquo;) Scores:</div>
+              <div class="text-2xl font-extrabold mono text-cyan-300 tracking-wider">
+                [5, 2, 1, 3]
+              </div>
+            </div>
+          </div>
+
+          <div class="text-xs text-slate-400 leading-relaxed pt-4 border-t border-slate-800">
+            Next, Softmax converts these raw scores into a normalized probability distribution.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <!-- SLIDE 6: Softmax -->
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="6">
+      <div class="mb-2">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-0.5">Stage 4: Normalization Step-by-Step</div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-100">Softmax</h2>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1 items-stretch text-xs mono">
+        <!-- Definition Left -->
+        <div class="lg:col-span-5 rounded-2xl border border-cyan-500/30 bg-[#0E1A33]/80 p-5 flex flex-col justify-between">
+          <div>
+            <div class="p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-center mb-4">
+              <div class="text-sm font-bold text-cyan-300 flex items-center justify-center gap-1.5">
+                <span>Softmax(x<sub>i</sub>) = </span>
+                <span class="math-frac">
+                  <span class="math-num">e<sup>x<sub>i</sub></sup></span>
+                  <span class="math-den">&sum;<sub>j</sub> e<sup>x<sub>j</sub></sup></span>
+                </span>
+              </div>
+            </div>
+
+            <div class="text-xs font-bold text-slate-200 uppercase tracking-wider mb-2">Why do we need Softmax?</div>
+            <p class="text-slate-300 mb-3 text-[11px]">Softmax converts arbitrary scores into normalized weights:</p>
+            <ul class="space-y-2 text-slate-300 text-[11px]">
+              <li class="flex items-center gap-2"><span class="text-emerald-400 font-bold">&bull;</span> Each weight is positive</li>
+              <li class="flex items-center gap-2"><span class="text-emerald-400 font-bold">&bull;</span> Larger scores receive larger weights</li>
+              <li class="flex items-center gap-2"><span class="text-emerald-400 font-bold">&bull;</span> The weights sum approximately to 1</li>
+            </ul>
+          </div>
+
+          <div class="p-2.5 rounded-lg bg-cyan-950/30 border border-cyan-500/20 text-[11px] text-cyan-300">
+            Raw score vector: [5, 2, 1, 3]
+          </div>
+        </div>
+
+        <!-- Numerical Walkthrough Right -->
+        <div class="lg:col-span-7 rounded-2xl border border-slate-800 bg-[#0C152B]/90 p-5 flex flex-col justify-between">
+          <div class="space-y-2.5 text-slate-200 text-xs">
+            <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-800">
+              <div class="text-slate-400 text-[11px]">1. For numerical stability, find maximum:</div>
+              <div class="font-bold text-cyan-300 text-sm mt-0.5">m = max(x) = 5</div>
+            </div>
+
+            <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-800">
+              <div class="text-slate-400 text-[11px]">2. Subtract the maximum:</div>
+              <div class="font-bold text-emerald-300 text-sm mt-0.5">z = x &minus; m = [0, &minus;3, &minus;4, &minus;2]</div>
+            </div>
+
+            <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-800">
+              <div class="text-slate-400 text-[11px]">3. Compute exponentials:</div>
+              <div class="font-bold text-purple-300 text-xs mt-0.5">e<sup>z</sup> &asymp; [1, 0.0498, 0.0183, 0.1353]</div>
+            </div>
+
+            <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-800">
+              <div class="text-slate-400 text-[11px]">4. Sum:</div>
+              <div class="font-bold text-amber-300 text-sm mt-0.5">&sum; e<sup>z</sup> &asymp; 1.2034</div>
+            </div>
+          </div>
+
+          <div class="mt-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-center">
+            <div class="text-[10px] text-emerald-400 uppercase tracking-wider font-bold">Therefore:</div>
+            <div class="text-sm sm:text-base font-extrabold text-emerald-300 mt-0.5">
+              Softmax(x) &asymp; [0.8306, 0.0414, 0.0152, 0.1124]
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <!-- SLIDE 7: Our Approach: Integer-Native Softmax -->
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="7">
+      <div class="mb-3">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-1">Core Innovation</div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-100">Our Approach: Integer-Native Softmax</h2>
+      </div>
+
+      <div class="rounded-2xl border-2 border-emerald-400/80 bg-[#0B211C]/90 p-8 flex flex-col justify-between flex-1 glow-emerald">
+        <div class="space-y-6">
+          <!-- Step 1 -->
+          <div>
+            <div class="text-xs font-bold text-emerald-400 uppercase tracking-wider mono mb-2">Our key mathematical transformation:</div>
+            <div class="p-4 rounded-xl bg-slate-900/90 border border-slate-800 text-center text-xl sm:text-2xl font-extrabold mono text-emerald-300">
+              e<sup>z</sup> = 2<sup>z &middot; log<sub>2</sub>(e)</sup>
+            </div>
+          </div>
+
+          <!-- Step 2 -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mono text-sm">
+            <div class="p-4 rounded-xl bg-slate-900/90 border border-slate-800">
+              <div class="text-xs text-slate-400 mb-1">Since:</div>
+              <div class="text-lg font-bold text-cyan-300">log<sub>2</sub>(e) &asymp; 1.442695</div>
+            </div>
+            <div class="p-4 rounded-xl bg-slate-900/90 border border-slate-800">
+              <div class="text-xs text-slate-400 mb-1">we approximate it using:</div>
+              <div class="text-lg font-bold text-amber-300">
+                log<sub>2</sub>(e) &asymp; <span class="math-frac"><span class="math-num">23</span><span class="math-den">16</span></span> = 1.4375
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 3 Result -->
+          <div>
+            <div class="text-xs font-bold text-slate-300 uppercase tracking-wider mono mb-2">Therefore:</div>
+            <div class="p-4 rounded-xl bg-emerald-500/20 border border-emerald-400 text-center text-xl sm:text-3xl font-extrabold mono text-emerald-200">
+              e<sup>z</sup> &asymp; 2<sup>23(z) / 16</sup>
+            </div>
+          </div>
+        </div>
+
+        <div class="pt-4 border-t border-emerald-500/20 text-xs text-emerald-300 mono text-center">
+          Division by 16 is a 4-bit wire slice &bull; No hardware multipliers or dividers needed for base conversion!
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <!-- SLIDE 8: Power of Two & Binary Shift Exponentiation -->
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="8">
+      <div class="mb-2">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-0.5">Hardware Realization</div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-100">Binary Shift Exponentiation</h2>
+        <p class="text-xs text-slate-400 mt-0.5">Replacing Expensive Exponential ROMs with Pure Hardware Bit-Shifts &amp; 16-Word Refinement</p>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1 items-stretch mono text-xs">
+        <!-- Left: Principle & Hardware Mapping -->
+        <div class="lg:col-span-5 rounded-2xl border border-cyan-500/30 bg-[#0E1A33]/80 p-4 flex flex-col justify-between">
+          <div>
+            <h3 class="text-xs font-bold text-cyan-300 uppercase tracking-wider mb-2">Powers of Two in Hardware</h3>
+            <p class="text-slate-300 text-[11px] leading-relaxed mb-3">
+              Digital FPGAs natively compute powers of two using single-cycle barrel shifters:
+            </p>
+
+            <div class="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs font-bold text-center text-cyan-300 mb-3">
+              2<sup>3</sup> = 8, &emsp; 2<sup>4</sup> = 16, &emsp; 2<sup>&minus;4</sup> = <span class="math-frac"><span class="math-num">1</span><span class="math-den">16</span></span> = 0.0625
+            </div>
+
+            <div class="space-y-2 text-[11px] text-slate-300">
+              <div class="p-2 rounded-lg bg-slate-900/70 border border-slate-800">
+                <span class="text-emerald-400 font-bold">&bull; Integer Component:</span>
+                <span class="text-slate-300"> Bit-slice [7:4] drives an 8-bit barrel right-shifter.</span>
+              </div>
+              <div class="p-2 rounded-lg bg-slate-900/70 border border-slate-800">
+                <span class="text-cyan-400 font-bold">&bull; Fractional Component:</span>
+                <span class="text-slate-300"> Bit-slice [3:0] indexes a tiny 16-entry correction LUT for 2<sup>&minus;f/16</sup>.</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[10px]">
+            &bull; Tier 0 uses shift-only (0 ROM). Tier 1 adds 16 words for 410x higher precision.
+          </div>
+        </div>
+
+        <!-- Right: Concrete Evaluation of z = -3, Resulting A Vector -->
+        <div class="lg:col-span-7 rounded-2xl border border-emerald-500/30 bg-[#0B211C]/80 p-4 flex flex-col justify-between">
+          <div>
+            <div class="text-xs font-bold text-emerald-300 uppercase tracking-wider mb-2 flex items-center justify-between">
+              <span>Concrete Numerical Evaluation</span>
+              <span class="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">Query: &ldquo;Turn&rdquo; (m = 5)</span>
+            </div>
+            
+            <div class="space-y-2">
+              <div class="grid grid-cols-2 gap-2">
+                <div class="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                  <div class="text-slate-400 text-[10px]">Input Difference (x &minus; m):</div>
+                  <div class="text-xs font-bold text-slate-100">z = 2 &minus; 5 = &minus;3 (token &ldquo;on&rdquo;)</div>
+                </div>
+                <div class="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                  <div class="text-slate-400 text-[10px]">Base-2 Scaled Value:</div>
+                  <div class="text-xs font-bold text-amber-300 flex items-center gap-1">
+                    <span class="math-frac"><span class="math-num">23(&minus;3)</span><span class="math-den">16</span></span> = &minus;4.3125
+                  </div>
+                </div>
+              </div>
+
+              <div class="p-2 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between">
+                <div>
+                  <div class="text-slate-400 text-[10px]">Hardware Decomposition:</div>
+                  <div class="text-xs font-bold text-emerald-300">
+                    2<sup>&minus;4.3125</sup> = 2<sup>&minus;4</sup> &times; 2<sup>&minus;0.3125</sup>
+                  </div>
+                </div>
+                <div class="text-right text-[10px] text-slate-400">
+                  Integer shift = &minus;4 &bull; LUT index = 5
+                </div>
+              </div>
+
+              <!-- Calculated Result Box -->
+              <div class="p-2 rounded-lg bg-emerald-950/40 border border-emerald-500/40">
+                <div class="text-emerald-400 text-[10px] font-bold uppercase tracking-wider flex items-center justify-between">
+                  <span>Calculated Numerical Result:</span>
+                  <span class="text-emerald-300 font-extrabold text-xs">2<sup>&minus;4.3125</sup> = 0.0503</span>
+                </div>
+                <div class="text-[11px] text-slate-200 mt-0.5 flex items-center justify-between">
+                  <span>0.0625 <span class="text-slate-400 text-[10px]">(&gt;&gt; 4)</span> &times; 0.8052 <span class="text-slate-400 text-[10px]">(16-LUT)</span> = <strong>0.0503</strong></span>
+                  <span class="text-[10px] text-slate-400">True e<sup>&minus;3</sup> = 0.0498 (&Delta; = 0.0005)</span>
+                </div>
+              </div>
+
+              <!-- Normalized Attention Vector (A = result) -->
+              <div class="p-2.5 rounded-xl bg-cyan-950/40 border border-cyan-500/40">
+                <div class="text-cyan-400 text-[10px] font-bold uppercase tracking-wider flex items-center justify-between">
+                  <span>Normalized Softmax Weights (A = result):</span>
+                  <span class="text-cyan-300 text-[10px]">&sum; e<sup>z</sup> = 1.2052</span>
+                </div>
+                <div class="mt-1 p-1.5 rounded bg-slate-950 border border-cyan-500/30 text-center font-extrabold text-cyan-300 text-xs sm:text-sm tracking-wider">
+                  A = [ 0.830,  0.042,  0.015,  0.113 ]
+                </div>
+                <div class="grid grid-cols-4 gap-1 mt-1 text-[9px] text-center text-slate-400">
+                  <div>Turn: <strong class="text-cyan-300">83.0%</strong></div>
+                  <div>on: <strong class="text-slate-300">4.2%</strong></div>
+                  <div>the: <strong class="text-slate-400">1.5%</strong></div>
+                  <div>lights: <strong class="text-emerald-300">11.3%</strong></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="pt-2 border-t border-emerald-500/20 text-[10px] text-slate-400 flex items-center justify-between">
+            <span>&bull; Exact sum of weights &sum; A<sub>i</sub> = 1.000 (100%)</span>
+            <span class="text-cyan-300 font-bold">Next: Calculate Head Context H = A &middot; V &rarr;</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <!-- SLIDE 9: Attention Context Vector Computation (H = A · V) -->
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="9">
+      <div class="mb-2">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-0.5">Stage 5: Value Projection Aggregation</div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-100">Attention Context Vector: H = A &middot; V</h2>
+        <p class="text-xs text-slate-400 mt-0.5">
+          Weighting Token Value Representations by Softmax Probabilities to Generate Head Output
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1 items-stretch mono text-xs">
+        <!-- Left: Input Representations (A & V) -->
+        <div class="lg:col-span-5 rounded-2xl border border-cyan-500/30 bg-[#0E1A33]/80 p-4 flex flex-col justify-between">
+          <div>
+            <div class="text-xs font-bold text-cyan-300 uppercase tracking-wider mb-2.5">Input Representations</div>
+
+            <!-- Vector A Box -->
+            <div class="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 mb-2.5">
+              <div class="text-[10px] text-slate-400 uppercase font-bold mb-1">Attention Row A (Query = &ldquo;Turn&rdquo;):</div>
+              <div class="text-xs sm:text-sm font-extrabold text-cyan-300 tracking-wider">
+                A = [ 0.830,  0.042,  0.015,  0.113 ]
+              </div>
+              <div class="grid grid-cols-4 gap-1 mt-1.5 text-[9px] text-center">
+                <div class="p-1 rounded bg-cyan-500/20 text-cyan-200 border border-cyan-500/40">
+                  <div class="font-bold">83.0%</div>
+                  <div class="text-[8px] text-slate-400">Turn</div>
+                </div>
+                <div class="p-1 rounded bg-slate-800 text-slate-300">
+                  <div class="font-bold">4.2%</div>
+                  <div class="text-[8px] text-slate-400">on</div>
+                </div>
+                <div class="p-1 rounded bg-slate-800 text-slate-300">
+                  <div class="font-bold">1.5%</div>
+                  <div class="text-[8px] text-slate-400">the</div>
+                </div>
+                <div class="p-1 rounded bg-emerald-500/20 text-emerald-200 border border-emerald-500/40">
+                  <div class="font-bold">11.3%</div>
+                  <div class="text-[8px] text-slate-400">lights</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Value Matrix V Table -->
+            <div class="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800">
+              <div class="text-[10px] text-slate-400 uppercase font-bold mb-1 flex items-center justify-between">
+                <span>Value Matrix V (4 Tokens &times; 4 Features):</span>
+                <span class="text-emerald-400 font-mono">INT8 Values</span>
+              </div>
+              <table class="w-full text-center text-[10px] border-collapse">
+                <thead>
+                  <tr class="text-slate-500 border-b border-slate-800">
+                    <th class="p-1 text-left">Token</th>
+                    <th class="p-1">v<sub>0</sub></th>
+                    <th class="p-1">v<sub>1</sub></th>
+                    <th class="p-1">v<sub>2</sub></th>
+                    <th class="p-1">v<sub>3</sub></th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800/60 font-semibold">
+                  <tr class="text-cyan-300 bg-cyan-500/5">
+                    <td class="p-1 text-left font-bold">V(Turn)</td>
+                    <td class="p-1">10</td>
+                    <td class="p-1">4</td>
+                    <td class="p-1">&minus;2</td>
+                    <td class="p-1">8</td>
+                  </tr>
+                  <tr class="text-slate-300">
+                    <td class="p-1 text-left font-bold">V(on)</td>
+                    <td class="p-1">2</td>
+                    <td class="p-1">1</td>
+                    <td class="p-1">0</td>
+                    <td class="p-1">3</td>
+                  </tr>
+                  <tr class="text-slate-400">
+                    <td class="p-1 text-left font-bold">V(the)</td>
+                    <td class="p-1">1</td>
+                    <td class="p-1">0</td>
+                    <td class="p-1">1</td>
+                    <td class="p-1">1</td>
+                  </tr>
+                  <tr class="text-emerald-300 bg-emerald-500/5">
+                    <td class="p-1 text-left font-bold">V(lights)</td>
+                    <td class="p-1">4</td>
+                    <td class="p-1">8</td>
+                    <td class="p-1">6</td>
+                    <td class="p-1">&minus;1</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="mt-2.5 p-2 rounded-lg bg-cyan-950/30 border border-cyan-500/20 text-[10px] text-cyan-300">
+            &bull; FPGA hardware: 8-lane INT8 MAC array executes this matrix dot-product in 4 clock cycles without FP multipliers.
+          </div>
+        </div>
+
+        <!-- Right: Step-by-Step Dot-Product & Evaluated Vector H -->
+        <div class="lg:col-span-7 rounded-2xl border border-emerald-500/30 bg-[#0B211C]/80 p-4 flex flex-col justify-between">
+          <div>
+            <div class="text-xs font-bold text-emerald-300 uppercase tracking-wider mb-2 flex items-center justify-between">
+              <span>Weighted Dot-Product Computation</span>
+              <span class="text-[10px] text-slate-400 font-mono">H = &sum;<sub>i</sub> (A<sub>i</sub> &times; V<sub>i</sub>)</span>
+            </div>
+
+            <!-- Formula Expansion -->
+            <div class="p-2 rounded-lg bg-slate-900 border border-slate-800 text-[10px] text-slate-300 mb-2">
+              <span class="text-cyan-300 font-bold">H</span> = 
+              <span class="text-cyan-400 font-bold">0.830</span>&middot;V(Turn) + 
+              <span class="text-slate-300 font-bold">0.042</span>&middot;V(on) + 
+              <span class="text-slate-400 font-bold">0.015</span>&middot;V(the) + 
+              <span class="text-emerald-400 font-bold">0.113</span>&middot;V(lights)
+            </div>
+
+            <!-- Dimension Accumulation -->
+            <div class="space-y-1.5 text-[10px]">
+              <div class="p-1.5 rounded-lg bg-slate-900/90 border border-slate-800 flex items-center justify-between">
+                <span class="font-bold text-slate-400">H[0]:</span>
+                <span class="text-slate-300">0.830(10) + 0.042(2) + 0.015(1) + 0.113(4)</span>
+                <span class="font-bold text-cyan-300 text-xs">= 8.85</span>
+              </div>
+
+              <div class="p-1.5 rounded-lg bg-slate-900/90 border border-slate-800 flex items-center justify-between">
+                <span class="font-bold text-slate-400">H[1]:</span>
+                <span class="text-slate-300">0.830(4) + 0.042(1) + 0.015(0) + 0.113(8)</span>
+                <span class="font-bold text-cyan-300 text-xs">= 4.27</span>
+              </div>
+
+              <div class="p-1.5 rounded-lg bg-slate-900/90 border border-slate-800 flex items-center justify-between">
+                <span class="font-bold text-slate-400">H[2]:</span>
+                <span class="text-slate-300">0.830(&minus;2) + 0.042(0) + 0.015(1) + 0.113(6)</span>
+                <span class="font-bold text-rose-300 text-xs">= &minus;0.97</span>
+              </div>
+
+              <div class="p-1.5 rounded-lg bg-slate-900/90 border border-slate-800 flex items-center justify-between">
+                <span class="font-bold text-slate-400">H[3]:</span>
+                <span class="text-slate-300">0.830(8) + 0.042(3) + 0.015(1) + 0.113(&minus;1)</span>
+                <span class="font-bold text-cyan-300 text-xs">= 6.67</span>
+              </div>
+            </div>
+
+            <!-- Final Result Box -->
+            <div class="mt-2.5 p-2.5 rounded-xl bg-gradient-to-r from-emerald-500/20 via-sky-500/20 to-cyan-500/20 border-2 border-emerald-400 text-center glow-emerald">
+              <div class="text-[10px] text-emerald-300 uppercase tracking-wider font-bold">Final Attention Context Vector H:</div>
+              <div class="text-base sm:text-lg font-black mono text-emerald-200 mt-0.5 tracking-wider">
+                H = [ 8.85,  4.27,  &minus;0.97,  6.67 ]
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-2 text-[10px] text-slate-400 leading-relaxed pt-1.5 border-t border-emerald-500/20">
+            <strong class="text-slate-200">Semantic Insight:</strong> Action verb &ldquo;Turn&rdquo; drives 83% of the state vector, while object &ldquo;lights&rdquo; contributes 11.3% modifier context &mdash; ready for sequence Mean Pooling &amp; Intent Classification.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <!-- SLIDE 10: Flowchart: Version A vs Tier 1 — Our Approach -->
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="10">
+      <div class="mb-2">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-0.5">Side-by-Side Execution Flow</div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-100">Version A vs. Tier 1 &mdash; Our Approach</h2>
+      </div>
+
+      <!-- Side by Side Flowcharts -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 items-stretch mono text-xs">
+        <!-- Version A Left -->
+        <div class="rounded-2xl border border-rose-500/40 bg-[#1F0E17]/80 p-4 flex flex-col justify-between">
+          <div>
+            <div class="text-xs font-bold text-rose-300 uppercase tracking-wider text-center mb-2">Version A (Conventional Detour)</div>
+            <div class="space-y-1 text-center text-[10px]">
+              <div class="p-1.5 rounded bg-slate-900 border border-slate-800 font-semibold">MAX FIND</div>
+              <div class="text-rose-400 text-[9px]">&darr;</div>
+              <div class="p-1.5 rounded bg-rose-500/20 border border-rose-500/40 text-rose-200 font-bold">&bull; DESCALE</div>
+              <div class="text-rose-400 text-[9px]">&darr;</div>
+              <div class="p-1.5 rounded bg-rose-500/20 border border-rose-500/40 text-rose-200 font-bold">256-ENTRY EXP LUT</div>
+              <div class="text-rose-400 text-[9px]">&darr;</div>
+              <div class="p-1.5 rounded bg-slate-900 border border-slate-800 font-semibold">ACCUMULATE</div>
+              <div class="text-slate-500 text-[9px]">&darr;</div>
+              <div class="p-1.5 rounded bg-slate-900 border border-slate-800 font-semibold">24-BIT RESTORING DIVIDER</div>
+              <div class="text-rose-400 text-[9px]">&darr;</div>
+              <div class="p-1.5 rounded bg-rose-500/20 border border-rose-500/40 text-rose-200 font-bold">&bull; INT8 REQUANTIZATION</div>
+            </div>
+          </div>
+
+          <div class="mt-2 pt-2 border-t border-rose-500/30 text-center">
+            <div class="text-xs font-bold text-rose-300">251 cycles / row</div>
+            <div class="text-sm font-extrabold text-slate-100">2,008 cycles / 8 rows</div>
+          </div>
+        </div>
+
+        <!-- Tier 1 Right -->
+        <div class="rounded-2xl border-2 border-emerald-400 bg-[#0B211C]/90 p-4 flex flex-col justify-between glow-emerald">
+          <div>
+            <div class="text-xs font-bold text-emerald-300 uppercase tracking-wider text-center mb-2">Tier 1 &mdash; Our Approach</div>
+            <div class="space-y-1 text-center text-[10px]">
+              <div class="p-1.5 rounded bg-slate-900 border border-slate-800 font-semibold">MAX FIND</div>
+              <div class="text-emerald-400 text-[9px]">&darr;</div>
+              <div class="p-1.5 rounded bg-emerald-500/20 border border-emerald-400 text-emerald-200 font-bold">BASE-2 TRANSFORMATION</div>
+              <div class="text-emerald-400 text-[9px]">&darr;</div>
+              <div class="p-1.5 rounded bg-emerald-500/20 border border-emerald-400 text-emerald-200 font-bold">BARREL SHIFT + 16-ENTRY CORRECTION LUT</div>
+              <div class="text-emerald-400 text-[9px]">&darr;</div>
+              <div class="p-1.5 rounded bg-slate-900 border border-slate-800 font-semibold">ACCUMULATE</div>
+              <div class="text-slate-500 text-[9px]">&darr;</div>
+              <div class="p-1.5 rounded bg-slate-900 border border-slate-800 font-semibold">24-BIT RESTORING DIVIDER</div>
+            </div>
+          </div>
+
+          <div class="mt-2 pt-2 border-t border-emerald-500/30 text-center">
+            <div class="text-xs font-bold text-emerald-300">235 cycles / row</div>
+            <div class="text-sm font-extrabold text-emerald-200">1,880 cycles / 8 rows</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Highlights Banner -->
+      <div class="mt-2 pt-1 text-center text-[9px] text-slate-400 mono">
+        * Same 24-bit restoring divider in both architectures
+      </div>
+      <div class="flex items-center justify-center gap-6 py-1.5 px-4 rounded-xl bg-slate-900/90 border border-slate-800 mono text-xs sm:text-sm font-extrabold">
+        <span class="text-cyan-300">128 Softmax cycles saved</span>
+        <span class="text-slate-600">|</span>
+        <span class="text-emerald-400">6.37% Softmax cycle reduction</span>
+      </div>
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <!-- SLIDE 11: Comprehensive Key Metrics Matrix & Hardware Verification -->
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="11">
+      <div class="mb-2">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-0.5">Comprehensive Performance Matrix</div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-100">Key Metrics Matrix &amp; Hardware Verification</h2>
+        <p class="text-xs text-slate-400 mt-0.5">ModelSim 10.5b Simulation &bull; DE2-115 FPGA Timing @ 50 MHz</p>
+      </div>
+
+      <!-- Metrics Table Card -->
+      <div class="rounded-2xl border border-slate-800 bg-[#0C152B]/90 p-3.5 flex-1 flex flex-col justify-between overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left mono text-xs border-collapse">
+            <thead>
+              <tr class="text-slate-300 border-b border-slate-700 bg-slate-900/80 text-[11px]">
+                <th class="p-1.5 text-cyan-400 font-bold">Metric / Parameter</th>
+                <th class="p-1.5 text-rose-400 font-bold">Version A (Detour)</th>
+                <th class="p-1.5 text-emerald-400 font-bold">Tier 0 (Shift-Only)</th>
+                <th class="p-1.5 text-emerald-300 font-bold">Tier 1 (16-LUT)</th>
+                <th class="p-1.5 text-cyan-300 font-bold">Advantage / Improvement</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800/80 text-[10px] sm:text-[11px]">
+              <tr class="hover:bg-slate-800/40">
+                <td class="p-1 font-bold text-slate-200">Softmax Latency (Cycles)</td>
+                <td class="p-1 text-rose-300">2,008 cycles</td>
+                <td class="p-1 text-emerald-300 font-bold">1,880 cycles</td>
+                <td class="p-1 text-emerald-300 font-bold">1,880 cycles</td>
+                <td class="p-1 text-cyan-300 font-bold">128 cycles saved (&minus;6.4%)</td>
+              </tr>
+              <tr class="hover:bg-slate-800/40">
+                <td class="p-1 font-bold text-slate-200">Softmax Latency @ 50 MHz</td>
+                <td class="p-1 text-rose-300">40.16 &micro;s</td>
+                <td class="p-1 text-emerald-300 font-bold">37.60 &micro;s</td>
+                <td class="p-1 text-emerald-300 font-bold">37.60 &micro;s</td>
+                <td class="p-1 text-cyan-300 font-bold">2.56 &micro;s faster / inference</td>
+              </tr>
+              <tr class="hover:bg-slate-800/40">
+                <td class="p-1 font-bold text-slate-200">Total Accelerator Cycles</td>
+                <td class="p-1 text-rose-300">5,688 cycles</td>
+                <td class="p-1 text-emerald-300 font-bold">5,560 cycles</td>
+                <td class="p-1 text-emerald-300 font-bold">5,560 cycles</td>
+                <td class="p-1 text-cyan-300 font-bold">128 cycles saved (&minus;2.25%)</td>
+              </tr>
+              <tr class="hover:bg-slate-800/40">
+                <td class="p-1 font-bold text-slate-200">Total Latency @ 50 MHz</td>
+                <td class="p-1 text-rose-300">113.76 &micro;s</td>
+                <td class="p-1 text-emerald-300 font-bold">111.20 &micro;s</td>
+                <td class="p-1 text-emerald-300 font-bold">111.20 &micro;s</td>
+                <td class="p-1 text-slate-300">Deterministic sub-ms latency</td>
+              </tr>
+              <tr class="hover:bg-slate-800/40">
+                <td class="p-1 font-bold text-slate-200">Exponential ROM Footprint</td>
+                <td class="p-1 text-rose-300">256 entries (16-bit)</td>
+                <td class="p-1 text-emerald-300 font-bold">0 entries (NO ROM!)</td>
+                <td class="p-1 text-emerald-300 font-bold">16 entries (16-bit)</td>
+                <td class="p-1 text-cyan-300 font-bold">100% ROM eliminated in T0</td>
+              </tr>
+              <tr class="hover:bg-slate-800/40">
+                <td class="p-1 font-bold text-slate-200">Extra Pipeline Stages</td>
+                <td class="p-1 text-rose-300">2 (Descale + Requant)</td>
+                <td class="p-1 text-emerald-300 font-bold">0 (Eliminated)</td>
+                <td class="p-1 text-emerald-300 font-bold">0 (Eliminated)</td>
+                <td class="p-1 text-cyan-300 font-bold">Eliminates 16c/row overhead</td>
+              </tr>
+              <tr class="hover:bg-slate-800/40">
+                <td class="p-1 font-bold text-slate-200">Mean Absolute Error (MAE)</td>
+                <td class="p-1 text-rose-300">0.100967</td>
+                <td class="p-1 text-emerald-300 font-bold">0.002312</td>
+                <td class="p-1 text-emerald-300 font-bold">0.000246</td>
+                <td class="p-1 text-purple-300 font-bold">&approx; 44x lower (T0) | &approx; 410x lower (T1)</td>
+              </tr>
+              <tr class="hover:bg-slate-800/40">
+                <td class="p-1 font-bold text-slate-200">Max Absolute Error</td>
+                <td class="p-1 text-rose-300">0.401563</td>
+                <td class="p-1 text-emerald-300 font-bold">0.009236</td>
+                <td class="p-1 text-emerald-300 font-bold">0.000979</td>
+                <td class="p-1 text-slate-300">&gt; 400x peak error reduction</td>
+              </tr>
+              <tr class="hover:bg-slate-800/40">
+                <td class="p-1 font-bold text-slate-200">Rank Inversion (1,000 vec)</td>
+                <td class="p-1 text-slate-300">0.000%</td>
+                <td class="p-1 text-emerald-300 font-bold">0.000%</td>
+                <td class="p-1 text-emerald-300 font-bold">0.000%</td>
+                <td class="p-1 text-slate-300">0% rank inversion (100% intent match)</td>
+              </tr>
+              <tr class="hover:bg-slate-800/40">
+                <td class="p-1 font-bold text-slate-200">Hardware Verification</td>
+                <td class="p-1 text-emerald-400 font-bold">6 / 6 PASS</td>
+                <td class="p-1 text-emerald-400 font-bold">6 / 6 PASS</td>
+                <td class="p-1 text-emerald-400 font-bold">6 / 6 PASS</td>
+                <td class="p-1 text-emerald-300 font-bold">18 / 18 Tests Passed (ModelSim)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="mt-2 p-2 rounded-xl bg-cyan-950/30 border border-cyan-500/30 flex items-center justify-between text-[11px]">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span class="text-slate-200 font-bold">Conclusion:</span>
+            <span class="text-slate-300">Integer-native Softmax eliminates ROM, saves 128 cycles, and achieves 44x&ndash;410x higher precision.</span>
+          </div>
+          <a href="key_metrics_matrix.png" target="_blank" class="px-2.5 py-0.5 rounded bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 font-bold transition flex items-center gap-1 text-[10px]">
+            <span>View Infographic &rarr;</span>
+          </a>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ===================================================================== -->
+  <!-- Bottom Footer with Slide Progress Dots -->
+  <!-- ===================================================================== -->
+  <footer class="h-12 border-t border-slate-800 bg-[#0B1326]/90 px-6 flex items-center justify-between z-50 text-xs text-slate-400 mono flex-shrink-0">
+    <div class="flex items-center gap-2">
+      <span class="text-slate-500">Navigate:</span>
+      <span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">&larr;</span>
+      <span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">&rarr;</span>
+      <span class="text-slate-500 hidden sm:inline">or Spacebar</span>
+    </div>
+
+    <!-- Slide Dots -->
+    <div class="flex items-center gap-1.5" id="slide-dots"></div>
+
+    <div class="flex items-center gap-2">
+      <span class="text-emerald-400">&bull; Mathematical Validation</span>
+      <span class="text-slate-600">|</span>
+      <span class="text-cyan-400">Pradeep &bull; Shailesh &bull; Hamsavarthan</span>
+    </div>
+  </footer>
+
+  <!-- ===================================================================== -->
+  <!-- Overview Grid Modal (11 Slides) -->
+  <!-- ===================================================================== -->
+  <div id="overview-modal" class="fixed inset-0 bg-[#080D1A]/95 backdrop-blur-md z-50 p-6 hidden flex-col justify-between overflow-y-auto">
+    <div class="flex items-center justify-between border-b border-slate-800 pb-4 mb-6">
+      <h2 class="text-lg font-bold text-slate-100">All Slides Overview (11 Slides)</h2>
+      <button onclick="toggleOverview()" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs mono">
+        Close (Esc)
+      </button>
+    </div>
+    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 flex-1" id="overview-grid"></div>
+  </div>
+
+  <script>
+    let currentSlide = 1;
+    const totalSlides = 11;
+    const slides = document.querySelectorAll('.slide');
+
+    const slideTitles = [
+      "1. Title & Authors",
+      "2. Problem: Transformer Attention on FPGA",
+      "3. From Sentence to Embeddings",
+      "4. From Embeddings to Q, K and V",
+      "5. Attention Scores (QK^T)",
+      "6. Softmax Normalization Step-by-Step",
+      "7. Our Approach: Integer-Native Softmax",
+      "8. Binary Shift Exponentiation (A = result)",
+      "9. Context Aggregation (H = A · V)",
+      "10. Version A vs Tier 1 Execution Flow",
+      "11. Key Metrics Matrix & Verification"
+    ];
+
+    function showSlide(index) {
+      if (index < 1) index = 1;
+      if (index > totalSlides) index = totalSlides;
+      
+      currentSlide = index;
+      slides.forEach((s, idx) => {
+        if (idx + 1 === currentSlide) {
+          s.classList.add('active');
+        } else {
+          s.classList.remove('active');
+        }
+      });
+
+      document.getElementById('current-slide-num').textContent = currentSlide;
+      updateDots();
+    }
+
+    function nextSlide() {
+      if (currentSlide < totalSlides) {
+        showSlide(currentSlide + 1);
+      }
+    }
+
+    function prevSlide() {
+      if (currentSlide > 1) {
+        showSlide(currentSlide - 1);
+      }
+    }
+
+    function updateDots() {
+      const container = document.getElementById('slide-dots');
+      container.innerHTML = '';
+      for (let i = 1; i <= totalSlides; i++) {
+        const dot = document.createElement('button');
+        dot.className = `w-2 h-2 rounded-full transition-all ${i === currentSlide ? 'bg-cyan-400 w-5 glow-cyan' : 'bg-slate-700 hover:bg-slate-500'}`;
+        dot.onclick = () => showSlide(i);
+        dot.title = slideTitles[i-1];
+        container.appendChild(dot);
+      }
+    }
+
+    function toggleOverview() {
+      const modal = document.getElementById('overview-modal');
+      modal.classList.toggle('hidden');
+      modal.classList.toggle('flex');
+      if (!modal.classList.contains('hidden')) {
+        renderOverviewGrid();
+      }
+    }
+
+    function renderOverviewGrid() {
+      const grid = document.getElementById('overview-grid');
+      grid.innerHTML = '';
+      for (let i = 1; i <= totalSlides; i++) {
+        const card = document.createElement('div');
+        card.className = `p-4 rounded-xl border ${i === currentSlide ? 'border-cyan-400 bg-cyan-950/30 glow-cyan' : 'border-slate-800 bg-[#0C152B]'} hover:border-cyan-500/60 transition cursor-pointer flex flex-col justify-between`;
+        card.onclick = () => {
+          showSlide(i);
+          toggleOverview();
+        };
+        card.innerHTML = `
+          <div class="text-xs text-cyan-400 mono font-bold mb-2">Slide ${i}</div>
+          <div class="text-sm font-semibold text-slate-200">${slideTitles[i-1]}</div>
+          <div class="mt-4 text-[10px] text-slate-500 mono">Click to jump &rarr;</div>
+        `;
+        grid.appendChild(card);
+      }
+    }
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    }
+
+    // Keyboard controls
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+        nextSlide();
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        prevSlide();
+      } else if (e.key === 'Home') {
+        showSlide(1);
+      } else if (e.key === 'End') {
+        showSlide(totalSlides);
+      } else if (e.key === 'f' || e.key === 'F') {
+        toggleFullscreen();
+      } else if (e.key === 'g' || e.key === 'G') {
+        toggleOverview();
+      } else if (e.key === 'Escape') {
+        const modal = document.getElementById('overview-modal');
+        if (!modal.classList.contains('hidden')) {
+          toggleOverview();
+        }
+      }
+    });
+
+    // Initialize
+    updateDots();
+  </script>
+</body>
+</html>
