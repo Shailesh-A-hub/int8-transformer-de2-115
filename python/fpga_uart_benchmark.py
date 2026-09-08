@@ -215,6 +215,7 @@ def find_default_mic_index():
 def capture_voice_command(mic_index=None):
     """
     Capture one spoken sentence from the microphone and transcribe via Google Speech API.
+    Matches friend's working reference: uses default sr.Microphone() unless --mic is specified.
     """
     if not HAS_SR:
         print("[ERROR] speech_recognition not installed.")
@@ -223,12 +224,10 @@ def capture_voice_command(mic_index=None):
 
     ensure_microphone_unmuted()
 
-    if mic_index is None:
-        mic_index = find_default_mic_index()
-
     recognizer = sr.Recognizer()
-    recognizer.pause_threshold = 0.8
-    recognizer.energy_threshold = 300
+    recognizer.pause_threshold = 1.0     # wait 1.0 s silence before ending speech
+    recognizer.non_speaking_duration = 0.5
+    recognizer.energy_threshold = 300    # baseline sensitivity
 
     print("\n" + "-" * 60)
     print("  [MIC] MICROPHONE ACTIVE  -- Speak your command now...")
@@ -236,15 +235,26 @@ def capture_voice_command(mic_index=None):
     print("-" * 60)
 
     try:
-        with sr.Microphone(device_index=mic_index, sample_rate=44100) as source:
+        mic_kwargs = {}
+        if mic_index is not None:
+            mic_kwargs["device_index"] = mic_index
+
+        with sr.Microphone(**mic_kwargs) as source:
             print("  [Calibrating mic for background noise... stay quiet for 1 sec]")
             recognizer.adjust_for_ambient_noise(source, duration=1)
-            print(f"  [OK] Ready! Speak now (threshold={int(recognizer.energy_threshold)}): ", end="", flush=True)
 
-            audio = recognizer.listen(source, timeout=8, phrase_time_limit=5)
+            # Prevent runaway threshold from fan/background noise
+            if recognizer.energy_threshold < 200:
+                recognizer.energy_threshold = 300
+            elif recognizer.energy_threshold > 2000:
+                recognizer.energy_threshold = 1000
+
+            print(f"  [OK] Ready! Speak now (sensitivity threshold={int(recognizer.energy_threshold)}): ", end="", flush=True)
+
+            audio = recognizer.listen(source, timeout=8, phrase_time_limit=6)
 
         print()  # newline after "Speak now:"
-        print("  [Processing audio via Google Speech API...]")
+        print("  [Audio captured! Sending to Google Speech API...]")
 
         text = recognizer.recognize_google(audio)
         print(f"  [OK] Heard: \"{text}\"")

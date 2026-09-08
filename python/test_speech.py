@@ -1,24 +1,20 @@
 #!/usr/bin/env python3
 """
-Speech Detection Test
-=====================
+Standalone Speech Detection Test
+==================================
 Uses PyAudio + SpeechRecognition + Google Speech API.
+Matches the working reference implementation:
+  - Default sr.Microphone() (opens Windows active recording device)
+  - Auto-unmutes Windows microphone if muted
+  - Clamps energy threshold to prevent false-triggering on background noise
+  - pause_threshold = 1.0s to allow full sentence speaking without premature cutoff
 
-Features:
-  - Automatically checks and un-mutes microphone if muted in Windows
-  - Automatically selects the active DirectSound recording device (avoids silent MME)
-  - Uses Google Speech API for real-time speech-to-text
+Run:
+    python python/test_speech.py
 """
 
-import sys
-import time
 import speech_recognition as sr
 import pyaudio
-
-try:
-    import audioop
-except ImportError:
-    import pyaudio.audioop as audioop
 
 # Optional Windows unmute check
 try:
@@ -44,64 +40,44 @@ def ensure_microphone_unmuted():
                 vol.SetMute(0, None)
             level = vol.GetMasterVolumeLevelScalar()
             if level < 0.5:
-                print(f"[MIC SETUP] Microphone volume was low ({int(level*100)}%). Boosting to 85%...")
+                print(f"[MIC SETUP] Microphone volume was low ({int(level*100)}%). Setting to 85%...")
                 vol.SetMasterVolumeLevelScalar(0.85, None)
-    except Exception as e:
+    except Exception:
         pass
 
 
-def get_best_microphone():
-    """
-    Scans input devices and selects the one with live audio signal.
-    On Windows 10/11, DirectSound devices capture audio whereas legacy MME can return 0.
-    """
+def list_mics():
+    """List available audio input devices for user reference."""
+    print("\n" + "=" * 60)
+    print("  AVAILABLE MICROPHONE INPUT DEVICES")
+    print("=" * 60)
     p = pyaudio.PyAudio()
-    best_idx = None
-    best_score = 0
-    
+    found = []
     for i in range(p.get_device_count()):
         try:
             info = p.get_device_info_by_index(i)
-            if info.get('maxInputChannels', 0) > 0:
-                api_name = p.get_host_api_info_by_index(info['hostApi'])['name']
-                rate = int(info.get('defaultSampleRate', 44100))
-                stream = p.open(
-                    input_device_index=i,
-                    channels=1,
-                    format=pyaudio.paInt16,
-                    rate=rate,
-                    frames_per_buffer=1024,
-                    input=True
-                )
-                data = stream.read(1024, exception_on_overflow=False)
-                stream.close()
-                rms = audioop.rms(data, 2)
-                score = rms * (2.0 if "DirectSound" in api_name else 1.0)
-                if score > best_score and rms > 50:
-                    best_score = score
-                    best_idx = i
+            if info.get("maxInputChannels", 0) > 0:
+                name = info.get("name", "Unknown").splitlines()[0]
+                found.append((i, name))
+                print(f"  [{i:2d}]  {name}")
         except Exception:
             pass
     p.terminate()
-
-    if best_idx is not None:
-        return best_idx
-    # Default fallback: device 5 (DirectSound Realtek) or None
-    return 5
+    print("=" * 60)
+    return found
 
 
 def capture_voice_command(device_index=None):
     """
     Capture one spoken sentence and transcribe using Google Speech API.
+    Uses default sr.Microphone() if device_index is None.
     """
     ensure_microphone_unmuted()
 
-    if device_index is None:
-        device_index = get_best_microphone()
-
     recognizer = sr.Recognizer()
-    recognizer.pause_threshold = 0.8
-    recognizer.energy_threshold = 300
+    recognizer.pause_threshold = 1.0     # wait 1.0 s of silence before ending speech
+    recognizer.non_speaking_duration = 0.5
+    recognizer.energy_threshold = 300    # baseline sensitivity
 
     print("\n" + "-" * 60)
     print("  [MIC] MICROPHONE ACTIVE  -- Speak your command now...")
@@ -109,15 +85,27 @@ def capture_voice_command(device_index=None):
     print("-" * 60)
 
     try:
-        with sr.Microphone(device_index=device_index, sample_rate=44100) as source:
+        mic_kwargs = {}
+        if device_index is not None:
+            mic_kwargs["device_index"] = device_index
+
+        with sr.Microphone(**mic_kwargs) as source:
             print("  [Calibrating mic for background noise... stay quiet for 1 sec]")
             recognizer.adjust_for_ambient_noise(source, duration=1)
-            print(f"  [OK] Ready! Speak now (threshold={int(recognizer.energy_threshold)}): ", end="", flush=True)
 
-            audio = recognizer.listen(source, timeout=8, phrase_time_limit=5)
+            # Prevent runaway threshold from fan/keyboard noise
+            if recognizer.energy_threshold < 200:
+                recognizer.energy_threshold = 300
+            elif recognizer.energy_threshold > 2000:
+                recognizer.energy_threshold = 1000
+
+            print(f"  [OK] Ready! Speak now (sensitivity threshold={int(recognizer.energy_threshold)}): ", end="", flush=True)
+
+            # Listen for up to 8s to start speaking, 6s max sentence length
+            audio = recognizer.listen(source, timeout=8, phrase_time_limit=6)
 
         print()
-        print("  [Processing audio via Google Speech API...]")
+        print("  [Audio captured! Sending to Google Speech API...]")
 
         text = recognizer.recognize_google(audio)
         print(f"  [OK] Heard: \"{text}\"")
@@ -133,7 +121,8 @@ def capture_voice_command(device_index=None):
         print(f"\n  [!] Google Speech API error (check internet): {e}")
         return None
     except OSError as e:
-        print(f"\n  [!] Microphone error: {e}")
+        print(f"\n  [!] Microphone access error: {e}")
+        print("      Settings -> Privacy -> Microphone -> Allow desktop apps")
         return None
 
 
@@ -144,12 +133,9 @@ if __name__ == "__main__":
     print("=" * 60)
 
     ensure_microphone_unmuted()
-    dev_idx = get_best_microphone()
-    p = pyaudio.PyAudio()
-    dev_name = p.get_device_info_by_index(dev_idx)['name'].splitlines()[0]
-    p.terminate()
-    print(f"\n[MIC AUTO-DETECT] Using Device [{dev_idx}]: {dev_name}")
+    list_mics()
 
+    print("\nUsing system default microphone.")
     print("\nSay one of these smart home commands:")
     print("  turn on the lights  |  turn off the lights")
     print("  increase the volume |  decrease the volume")
@@ -159,7 +145,7 @@ if __name__ == "__main__":
     while True:
         try:
             input("  [ENTER]  Press ENTER then speak your command...")
-            result = capture_voice_command(device_index=dev_idx)
+            result = capture_voice_command()
             if result:
                 print(f"\n  >>> SUCCESS! Recognized: \"{result}\"\n")
         except KeyboardInterrupt:
