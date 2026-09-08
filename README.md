@@ -184,6 +184,30 @@ To synthesize and fit the design to the **Cyclone IV EP4CE115**:
    - `HEX7`-`HEX2`: Hardware latency clock cycles (latched)
    - `UART_TXD`: Telemetry string (`I:<intent> C:<cycles>\r\n`)
 
+### 4. Real-Time Spoken Voice & UART Interactive Terminal
+A complete Python speech recognition and UART streaming host is included to drive the FPGA with live voice commands:
+
+1. **Test Microphone & Google STT (Standalone)**:
+   ```powershell
+   python python/test_speech.py
+   ```
+   Press <kbd>ENTER</kbd> and speak a command (e.g. *"turn on the lights"*). Transcribes in real time via Google Speech API.
+
+2. **Live Voice-to-FPGA Interactive Console**:
+   Connect your USB-to-UART module (e.g., CP2102) to the DE2-115 GPIO pins (`PIN_AB22` RXD, `PIN_AC15` TXD):
+   ```powershell
+   python python/fpga_uart_benchmark.py --port COM6 --voice
+   ```
+   - Press <kbd>ENTER</kbd> to activate the microphone and speak.
+   - Spoken words are tokenized into the 8-byte bus and transmitted over UART at 115,200 baud.
+   - The FPGA executes on-chip Self-Attention and returns the classified intent and cycle telemetry.
+
+3. **Side-by-Side Cycle Benchmark**:
+   ```powershell
+   python python/fpga_uart_benchmark.py --port COM6 --benchmark
+   ```
+   Triggers back-to-back hardware runs comparing Tier 0 vs. Version A, displaying cycle counts and speedup directly from the board.
+
 ---
 
 ## 📌 Scientific & Claim Integrity
