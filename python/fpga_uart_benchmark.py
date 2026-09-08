@@ -155,27 +155,65 @@ def find_default_mic_index():
     return None
 
 
-def listen_and_transcribe(recognizer, microphone):
-    """Capture one utterance from the microphone and return transcribed text."""
-    print("\n[VOICE] 🎤 Listening... SPEAK NOW!")
+def capture_voice_command():
+    """
+    Capture one spoken sentence from the laptop microphone.
+    Uses the same pattern as the working reference implementation:
+      - energy_threshold set to 300 before calibration
+      - Calibration + listening happen inside ONE single 'with Microphone()' block
+      - Clear 'Speak now:' prompt printed before listen() call
+    Returns transcribed text string, or None on any error.
+    """
+    if not HAS_SR:
+        print("[ERROR] speech_recognition not installed.")
+        print("        Run:  pip install SpeechRecognition pyaudio")
+        return None
+
+    recognizer = sr.Recognizer()
+    recognizer.pause_threshold = 0.8     # stop after 0.8 s silence
+    recognizer.energy_threshold = 300    # manual baseline (same as working reference)
+
+    print("\n" + "-" * 60)
+    print("  [MIC] MICROPHONE ACTIVE  -- Speak your command now...")
+    print("      (Say: 'turn on the lights', 'increase the volume', etc.)")
+    print("-" * 60)
+
     try:
-        with microphone as source:
-            audio = recognizer.listen(source, timeout=7, phrase_time_limit=8)
-        print("[VOICE] ⏳ Audio captured! Transcribing with Google STT...")
+        with sr.Microphone() as source:
+            # Calibrate + listen in ONE with-block (key fix from reference)
+            print("  [Calibrating mic for background noise... stay quiet for 1 sec]")
+            recognizer.adjust_for_ambient_noise(source, duration=1)
+            print("  [OK] Ready! Speak now: ", end="", flush=True)
+
+            # Listen: 8 s to start speaking, 5 s max phrase length
+            audio = recognizer.listen(source, timeout=8, phrase_time_limit=5)
+
+        print()  # newline after "Speak now:"
+        print("  [Processing audio via Google Speech API...]")
+
         text = recognizer.recognize_google(audio)
-        print(f"[VOICE] ✅ Heard: \"{text}\"")
+        print(f"  [OK] Heard: \"{text}\"")
         return text
+
     except sr.WaitTimeoutError:
-        print("[VOICE] ⚠️  No speech detected (timeout).")
-        print("        Tip: Speak clearly, or use --mic <index> to select the right microphone.")
+        print("\n  [!] No speech detected within 8 seconds. Please try again.")
         return None
     except sr.UnknownValueError:
-        print("[VOICE] ❓ Could not understand audio. Please speak clearly into your mic.")
+        print("\n  [!] Could not understand audio. Speak clearly and try again.")
         return None
     except sr.RequestError as e:
-        print(f"[VOICE] ❌ Google STT error: {e}")
-        print("        Please check your internet connection.")
+        print(f"\n  [!] Google Speech API error (check internet): {e}")
+        print("      Tip: Use text mode [type your sentence] if no internet.")
         return None
+    except OSError:
+        print("\n  [!] Microphone not found or access denied.")
+        print("      Go to: Settings -> Privacy -> Microphone -> Allow apps")
+        return None
+
+
+# keep old name as alias for backward compat
+def listen_and_transcribe(recognizer=None, microphone=None):
+    return capture_voice_command()
 
 
 def voice_terminal(ser, mic_index=None):
@@ -185,37 +223,11 @@ def voice_terminal(ser, mic_index=None):
         print("       Install with: pip install SpeechRecognition pyaudio")
         return
 
-    # Auto-detect mic if not provided
-    if mic_index is None:
-        mic_index = find_default_mic_index()
-
-    try:
-        microphone = sr.Microphone(device_index=mic_index)
-        mic_name = sr.Microphone.list_microphone_names()[mic_index] if mic_index is not None else "System Default"
-    except Exception as e:
-        print(f"[ERROR] Could not open microphone (index={mic_index}): {e}")
-        print("       Run with --list-mics to see available audio devices.")
-        return
-
-    recognizer = sr.Recognizer()
-    recognizer.dynamic_energy_threshold = True
-    recognizer.pause_threshold = 0.8
+    current_mode = 1  # Default: Tier 1
 
     print("\n" + "=" * 76)
     print("   DE2-115 INT8 TRANSFORMER -- VOICE INTERACTIVE CONSOLE")
     print("=" * 76)
-    print(f" Microphone: [{mic_index if mic_index is not None else 'Default'}] {mic_name}")
-    print(" [VOICE] Calibrating microphone for ambient noise (1 sec, stay quiet)...")
-    try:
-        with microphone as source:
-            recognizer.adjust_for_ambient_noise(source, duration=1.0)
-        print(f" [VOICE] Ready! Ambient noise threshold set to: {int(recognizer.energy_threshold)}")
-    except Exception as e:
-        print(f" [WARNING] Could not calibrate noise: {e}. Using default threshold.")
-
-    current_mode = 1  # Default: Tier 1
-
-    print("-" * 76)
     print(" SPEAK any of these sentences into your microphone:")
     print("   - \"turn on the lights\"")
     print("   - \"turn off the lights\"")
@@ -225,9 +237,9 @@ def voice_terminal(ser, mic_index=None):
     print("   - \"turn off the heat\"")
     print("-" * 76)
     print(" KEYBOARD COMMANDS:")
-    print("   [ENTER] (empty) -> Speak a sentence")
-    print("   [0] Switch to Tier 0 | [1] Switch to Tier 1 | [a] Switch to Version A")
-    print("   [q] Quit")
+    print("   [ENTER] (empty) -> Activate microphone & speak")
+    print("   [0] Tier 0 | [1] Tier 1 | [a] Version A | [q] Quit")
+    print("   OR just type a sentence + ENTER to send without mic")
     print("=" * 76)
 
     while True:
@@ -251,12 +263,12 @@ def voice_terminal(ser, mic_index=None):
                 print("[HOST] Switched to Version A.")
                 continue
             elif user_input == '':
-                # Empty enter = listen for speech
-                sentence = listen_and_transcribe(recognizer, microphone)
+                # Empty ENTER → activate mic and speak
+                sentence = capture_voice_command()
                 if sentence:
                     send_custom_sentence(ser, sentence, mode_byte=current_mode)
             else:
-                # User typed a sentence directly instead of speaking
+                # User typed a sentence directly
                 send_custom_sentence(ser, user_input, mode_byte=current_mode)
 
         except KeyboardInterrupt:
