@@ -5,14 +5,17 @@ Interactive UART Host Controller & Custom Sentence Classifier for INT8 Transform
 Connects to DE2-115 CP2102 serial port at 115,200 baud (8N1).
 
 Supported Actions:
-  1. Type your OWN sentence directly in English:
+  1. Type your OWN sentence (interactive mode)
+  2. SPEAK your sentence (voice mode, --voice flag)
      e.g., "turn on the lights", "increase the volume", "turn off the heat"
-     -> Tokenizes words on PC
-     -> Transmits token IDs to FPGA over UART (Command 'R')
+     -> Speech captured from microphone
+     -> Transcribed via Google STT
+     -> Tokenized on PC
+     -> Transmitted to FPGA over UART (Command 'R')
      -> FPGA executes INT8 Attention Engine & Softmax
      -> Returns hardware-measured cycles and classification intent!
 
-  2. Single-key commands:
+  3. Single-key commands:
      '0' : Run current sentence in Softmax Tier 0
      '1' : Run current sentence in Softmax Tier 1
      'a' : Run current sentence in Softmax Version A
@@ -33,6 +36,12 @@ try:
     HAS_SERIAL = True
 except ImportError:
     HAS_SERIAL = False
+
+try:
+    import speech_recognition as sr
+    HAS_SR = True
+except ImportError:
+    HAS_SR = False
 
 # ==============================================================================
 # Trained Model Vocabulary & Intent Classes
@@ -107,6 +116,101 @@ def run_benchmark_command(ser):
                 break
         else:
             time.sleep(0.01)
+
+
+# ==============================================================================
+# Voice / Speech-to-Text Input
+# ==============================================================================
+
+def listen_and_transcribe(recognizer, microphone):
+    """Capture one utterance from the microphone and return transcribed text."""
+    print("\n[VOICE] Listening... (speak now)")
+    try:
+        with microphone as source:
+            recognizer.adjust_for_ambient_noise(source, duration=0.5)
+            audio = recognizer.listen(source, timeout=6, phrase_time_limit=8)
+        print("[VOICE] Processing speech...")
+        text = recognizer.recognize_google(audio)
+        print(f"[VOICE] Heard: \"{text}\"")
+        return text
+    except sr.WaitTimeoutError:
+        print("[VOICE] No speech detected (timeout). Try again.")
+        return None
+    except sr.UnknownValueError:
+        print("[VOICE] Could not understand audio. Please speak clearly.")
+        return None
+    except sr.RequestError as e:
+        print(f"[VOICE] Google STT error: {e}")
+        print("[VOICE] Check your internet connection.")
+        return None
+
+
+def voice_terminal(ser):
+    """Voice-driven interactive terminal: speak a sentence, FPGA classifies it."""
+    if not HAS_SR:
+        print("[ERROR] SpeechRecognition library not found.")
+        print("       Install with: pip install SpeechRecognition pyaudio")
+        return
+
+    recognizer = sr.Recognizer()
+    try:
+        microphone = sr.Microphone()
+    except Exception as e:
+        print(f"[ERROR] Could not open microphone: {e}")
+        print("       Make sure a microphone is connected and not in use.")
+        return
+
+    current_mode = 1  # Default: Tier 1
+
+    print("\n" + "=" * 76)
+    print("   DE2-115 INT8 TRANSFORMER -- VOICE INTERACTIVE CONSOLE")
+    print("=" * 76)
+    print(" SPEAK any of these sentences into your microphone:")
+    print("   - \"turn on the lights\"")
+    print("   - \"turn off the lights\"")
+    print("   - \"increase the volume\"")
+    print("   - \"decrease the volume\"")
+    print("   - \"turn on the heat\"")
+    print("   - \"turn off the heat\"")
+    print("-" * 76)
+    print(" KEYBOARD COMMANDS (typed, not spoken):")
+    print("   [0] Switch to Tier 0 | [1] Switch to Tier 1 | [a] Switch to Version A")
+    print("   [q] Quit")
+    print("=" * 76)
+    print("\nPress ENTER to start listening, or type a command, then press ENTER.")
+
+    while True:
+        try:
+            mode_name = "Tier 0" if current_mode == 0 else ("Tier 1" if current_mode == 1 else "Version A")
+            user_input = input(f"\n[VOICE Mode: {mode_name}] Press ENTER to speak (or type command) > ").strip()
+
+            if user_input.lower() == 'q':
+                print("Exiting voice console.")
+                break
+            elif user_input.lower() == '0':
+                current_mode = 0
+                print("[HOST] Switched to Tier 0.")
+                continue
+            elif user_input.lower() == '1':
+                current_mode = 1
+                print("[HOST] Switched to Tier 1.")
+                continue
+            elif user_input.lower() in ['2', 'a']:
+                current_mode = 2
+                print("[HOST] Switched to Version A.")
+                continue
+            elif user_input == '':
+                # Empty enter = listen for speech
+                sentence = listen_and_transcribe(recognizer, microphone)
+                if sentence:
+                    send_custom_sentence(ser, sentence, mode_byte=current_mode)
+            else:
+                # User typed a sentence directly instead of speaking
+                send_custom_sentence(ser, user_input, mode_byte=current_mode)
+
+        except KeyboardInterrupt:
+            print("\nExiting voice console.")
+            break
 
 
 def send_custom_sentence(ser, sentence, mode_byte=1):
@@ -228,6 +332,7 @@ def main():
     parser.add_argument("--baud", "-b", type=int, default=115200, help="Baud rate (default: 115200)")
     parser.add_argument("--sentence", "-s", type=str, default=None, help="Directly type and run a single sentence")
     parser.add_argument("--interactive", "-i", action="store_true", help="Run interactive console (default)")
+    parser.add_argument("--voice", "-v", action="store_true", help="Voice input mode: speak sentences, FPGA classifies them")
     parser.add_argument("--benchmark", action="store_true", help="Directly trigger and print cycle benchmark")
     parser.add_argument("--mock", action="store_true", help="Display theoretical hardware metrics without opening port")
     args = parser.parse_args()
@@ -264,6 +369,8 @@ def main():
             send_custom_sentence(ser, args.sentence, mode_byte=1)
         elif args.benchmark:
             run_benchmark_command(ser)
+        elif args.voice:
+            voice_terminal(ser)
         else:
             interactive_terminal(ser)
     finally:
