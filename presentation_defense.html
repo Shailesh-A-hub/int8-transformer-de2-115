@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Faculty Viva Defense — INT8 Transformer Attention Accelerator</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap');
+    
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #070D18;
+      color: #E2E8F0;
+      overflow: hidden;
+      user-select: none;
+    }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    
+    .glow-cyan { box-shadow: 0 0 30px -5px rgba(6, 182, 212, 0.2); }
+    .glow-emerald { box-shadow: 0 0 30px -5px rgba(16, 185, 129, 0.2); }
+    .glow-purple { box-shadow: 0 0 30px -5px rgba(168, 85, 247, 0.2); }
+    
+    .slide {
+      opacity: 0;
+      visibility: hidden;
+      transform: scale(0.98);
+      transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.3s;
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .slide.active {
+      opacity: 1;
+      visibility: visible;
+      transform: scale(1);
+      z-index: 10;
+    }
+
+    .math-frac {
+      display: inline-flex;
+      flex-direction: column;
+      vertical-align: middle;
+      text-align: center;
+      padding: 0 4px;
+    }
+    .math-num {
+      border-bottom: 1.5px solid currentColor;
+      padding-bottom: 2px;
+      line-height: 1.1;
+    }
+    .math-den {
+      padding-top: 2px;
+      line-height: 1.1;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: #0B132B; }
+    ::-webkit-scrollbar-thumb { background: #1E293B; border-radius: 3px; }
+  </style>
+</head>
+<body class="h-screen w-screen flex flex-col bg-[#070D18] text-slate-100">
+
+  <!-- Top Global Header -->
+  <header class="h-14 border-b border-slate-800/80 bg-[#0B1326]/90 backdrop-blur px-6 flex items-center justify-between z-50 flex-shrink-0">
+    <div class="flex items-center gap-3">
+      <div class="h-8 w-8 rounded-lg bg-gradient-to-tr from-cyan-500 to-emerald-400 flex items-center justify-center font-bold text-xs text-slate-950 shadow-md">
+        DEF
+      </div>
+      <div>
+        <h1 class="text-sm font-semibold text-slate-200 tracking-wide">Project Defense &bull; INT8 Transformer Accelerator</h1>
+        <p class="text-[10px] text-cyan-400/80 mono">Faculty Viva Presentation &bull; Architectural &amp; Experimental Proof</p>
+      </div>
+    </div>
+
+    <!-- Navigation & Quick Controls -->
+    <div class="flex items-center gap-3">
+      <div class="flex items-center bg-slate-900/90 border border-slate-800 rounded-lg p-1 text-xs mono">
+        <button onclick="prevSlide()" class="px-2.5 py-1 hover:bg-slate-800 text-slate-300 hover:text-cyan-300 rounded transition flex items-center gap-1" title="Previous Slide (← / PgUp)">
+          <span>&lsaquo;</span> Prev
+        </button>
+        <span class="px-3 py-1 text-slate-400 border-x border-slate-800">
+          <span id="current-slide-num" class="text-cyan-400 font-bold">1</span> / <span id="total-slides-num">10</span>
+        </span>
+        <button onclick="nextSlide()" class="px-2.5 py-1 hover:bg-slate-800 text-slate-300 hover:text-cyan-300 rounded transition flex items-center gap-1" title="Next Slide (→ / Space / PgDn)">
+          Next <span>&rsaquo;</span>
+        </button>
+      </div>
+
+      <button onclick="toggleOverview()" class="p-2 bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 rounded-lg text-xs flex items-center gap-1.5 transition" title="Slide Grid Overview (G)">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+        <span class="hidden sm:inline">Overview</span>
+      </button>
+
+      <button onclick="toggleFullscreen()" class="p-2 bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 rounded-lg text-xs flex items-center gap-1.5 transition" title="Toggle Fullscreen (F)">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ===================================================================== -->
+  <!-- Main Presentation Slides Container -->
+  <!-- ===================================================================== -->
+  <main id="presentation-viewport" class="flex-1 relative overflow-hidden p-4 sm:p-6 lg:p-8">
+
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <!-- SLIDE 1: Title & Viva Introduction -->
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <div class="slide active items-center justify-center text-center px-4" data-slide="1">
+      <div class="w-full max-w-5xl border border-cyan-500/30 rounded-2xl p-8 sm:p-14 bg-gradient-to-b from-[#0E1A33]/90 to-[#070D18]/90 glow-cyan relative overflow-hidden backdrop-blur">
+        <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-300 text-xs tracking-wider uppercase mb-6 font-medium">
+          <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+          Faculty Viva &amp; Technical Defense
+        </div>
+
+        <h1 class="text-3xl sm:text-5xl lg:text-6xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-sky-200 to-emerald-300 tracking-tight leading-tight mb-4">
+          INT8 Transformer Attention Accelerator with Integer-Native Softmax
+        </h1>
+
+        <div class="w-48 h-1 bg-gradient-to-r from-cyan-500 via-sky-400 to-emerald-400 mx-auto rounded-full mb-6"></div>
+
+        <p class="text-base sm:text-xl text-slate-300 font-medium italic mb-8">
+          Architectural Rationales, Trade-Offs, Hardware Verification &amp; Viva Defense
+        </p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-3xl mx-auto mb-10 text-left text-xs mono">
+          <div class="p-3 rounded-xl border border-slate-800 bg-slate-900/80">
+            <div class="text-slate-400">Target FPGA:</div>
+            <div class="text-slate-100 font-bold mt-0.5">Cyclone IV EP4CE115</div>
+            <div class="text-cyan-400 text-[11px]">Terasic DE2-115 Board</div>
+          </div>
+          <div class="p-3 rounded-xl border border-slate-800 bg-slate-900/80">
+            <div class="text-slate-400">Operating Frequency:</div>
+            <div class="text-emerald-400 font-bold mt-0.5">50.00 MHz (20 ns)</div>
+            <div class="text-slate-300 text-[11px]">Zero-Jitter Determinism</div>
+          </div>
+          <div class="p-3 rounded-xl border border-slate-800 bg-slate-900/80">
+            <div class="text-slate-400">Verification:</div>
+            <div class="text-purple-300 font-bold mt-0.5">18/18 Tests Passed</div>
+            <div class="text-slate-300 text-[11px]">ModelSim &amp; Quartus Ready</div>
+          </div>
+        </div>
+
+        <div class="pt-6 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400 mono">
+          <span>Authors: Pradeep P &bull; Shailesh A &bull; Hamsavarthan</span>
+          <span class="text-cyan-400 font-semibold">Pure Verilog-2001 Standard</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <!-- SLIDE 2: Project Objectives & Purpose -->
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="2">
+      <div class="mb-3">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-1">Foundational Overview</div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-100">Project Objectives &amp; Purpose</h2>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 items-stretch">
+        <!-- Objective Left -->
+        <div class="lg:col-span-7 rounded-2xl border border-cyan-500/30 bg-[#0E1A33]/80 p-6 flex flex-col justify-between glow-cyan">
+          <div>
+            <h3 class="text-lg font-bold text-cyan-300 mb-3 flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-cyan-400"></span> Primary Objective
+            </h3>
+            <p class="text-sm text-slate-200 leading-relaxed mb-4">
+              To design, synthesize, and experimentally validate an <strong>integer-native (INT8) hardware accelerator for Transformer Self-Attention</strong> on an edge FPGA (Cyclone IV), eliminating floating-point units and multi-cycle LUT dequantization stages in Softmax.
+            </p>
+
+            <h3 class="text-sm font-bold text-slate-200 uppercase tracking-wider mb-2">Why is this project necessary?</h3>
+            <ul class="space-y-3 text-xs text-slate-300">
+              <li class="flex items-start gap-2">
+                <span class="text-cyan-400 font-bold">&bull;</span>
+                <span><strong>Hardware Constraint on Edge Silicon:</strong> Low-cost FPGAs (Cyclone IV) have zero native floating-point DSP units. Standard Softmax relies on real-valued exponentials e<sup>x</sup>.</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-cyan-400 font-bold">&bull;</span>
+                <span><strong>Softmax is the Critical Bottleneck:</strong> While matrix multiplications (Q, K, V) are readily accelerated by MAC arrays, Softmax accounts for <strong>over 33% of inference cycles</strong> due to non-linear exponentiation and division.</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-cyan-400 font-bold">&bull;</span>
+                <span><strong>Local Edge Privacy:</strong> Classifying voice commands directly on-chip prevents privacy exposure and eliminates cloud round-trip latency.</span>
+              </li>
+            </ul>
+          </div>
+
+          <div class="p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs mono text-cyan-300 mt-4">
+            Application Target: Real-time Smart Home Spoken Intent Classification (6 classes, L=8, D=32).
+          </div>
+        </div>
+
+        <!-- Purpose Right -->
+        <div class="lg:col-span-5 rounded-2xl border border-emerald-500/30 bg-[#0B211C]/80 p-6 flex flex-col justify-between">
+          <div>
+            <h3 class="text-base font-bold text-emerald-300 uppercase tracking-wider mb-3">Core Deliverables Achieved</h3>
+            <div class="space-y-3 mono text-xs">
+              <div class="p-3 rounded-lg bg-slate-900/90 border border-slate-800">
+                <div class="text-emerald-400 font-bold">1. Pure Integer Pipeline</div>
+                <div class="text-slate-300 text-[11px] mt-0.5">Zero floating-point conversions across all 8 pipeline stages.</div>
+              </div>
+              <div class="p-3 rounded-lg bg-slate-900/90 border border-slate-800">
+                <div class="text-emerald-400 font-bold">2. Dual Proposed Softmax Tiers</div>
+                <div class="text-slate-300 text-[11px] mt-0.5">Tier 0 (Zero ROM Shift) and Tier 1 (16-LUT Refinement).</div>
+              </div>
+              <div class="p-3 rounded-lg bg-slate-900/90 border border-slate-800">
+                <div class="text-emerald-400 font-bold">3. Multi-Modal Host Streaming</div>
+                <div class="text-slate-300 text-[11px] mt-0.5">Live laptop mic audio tokenized &amp; streamed over 115200 UART.</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="pt-4 border-t border-emerald-500/20 text-xs text-slate-400 mono">
+            Synthesis Target: Fits inside 18% LEs on Cyclone IV DE2-115.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <!-- SLIDE 3: Why Propose Tier 0 & Tier 1? (The Innovation) -->
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="3">
+      <div class="mb-3">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-1">Theoretical Rationale</div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-100">Why Propose Tier 0 and Tier 1?</h2>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 flex-1 items-stretch mono text-xs">
+        <!-- Version A -->
+        <div class="rounded-2xl border border-rose-500/40 bg-[#1F0E17]/80 p-5 flex flex-col justify-between">
+          <div>
+            <span class="px-2.5 py-0.5 rounded bg-rose-500/20 text-rose-300 font-bold text-[11px]">Version A (Baseline)</span>
+            <h3 class="text-sm font-bold text-rose-200 mt-2 mb-3">Conventional Detour</h3>
+            <p class="text-slate-300 text-[11px] leading-relaxed mb-4">
+              Dequantizes INT8 scores to fixed-point, queries a 256-word exponential ROM, accumulates, and requantizes back to INT8.
+            </p>
+            <div class="p-2.5 rounded bg-slate-900 border border-slate-800 space-y-1 text-[11px] text-slate-300">
+              <div>&bull; Softmax Cycles: <strong class="text-rose-400">2,008</strong></div>
+              <div>&bull; ROM Overhead: <strong class="text-rose-400">256 words</strong></div>
+              <div>&bull; Mean Abs Error: <strong class="text-rose-400">0.100967</strong></div>
+            </div>
+          </div>
+          <div class="text-[10px] text-rose-300 pt-3 border-t border-rose-500/20">
+            Slow, memory-heavy, interpolation errors.
+          </div>
+        </div>
+
+        <!-- Tier 0 -->
+        <div class="rounded-2xl border-2 border-emerald-400 bg-[#0A261C]/90 p-5 flex flex-col justify-between glow-emerald">
+          <div>
+            <span class="px-2.5 py-0.5 rounded bg-emerald-500/30 text-emerald-300 font-bold text-[11px]">Tier 0 (Proposed)</span>
+            <h3 class="text-sm font-bold text-emerald-200 mt-2 mb-3">Integer-Native Shift Only</h3>
+            <p class="text-slate-200 text-[11px] leading-relaxed mb-4">
+              Transforms e<sup>z</sup> into 2<sup>23z/16</sup>. Evaluates exponentials purely via hardware barrel shifting. Zero lookup tables.
+            </p>
+            <div class="p-2.5 rounded bg-slate-900 border border-slate-800 space-y-1 text-[11px] text-slate-200">
+              <div>&bull; Softmax Cycles: <strong class="text-emerald-400">1,880 (-128)</strong></div>
+              <div>&bull; ROM Overhead: <strong class="text-emerald-400">ZERO ROM</strong></div>
+              <div>&bull; Mean Abs Error: <strong class="text-emerald-400">0.002312</strong></div>
+            </div>
+          </div>
+          <div class="text-[10px] text-emerald-300 pt-3 border-t border-emerald-500/30 font-semibold">
+            Ideal for ultra-constrained area budgets.
+          </div>
+        </div>
+
+        <!-- Tier 1 -->
+        <div class="rounded-2xl border border-cyan-500/40 bg-[#0E1F36]/80 p-5 flex flex-col justify-between glow-cyan">
+          <div>
+            <span class="px-2.5 py-0.5 rounded bg-cyan-500/30 text-cyan-300 font-bold text-[11px]">Tier 1 (Proposed)</span>
+            <h3 class="text-sm font-bold text-cyan-200 mt-2 mb-3">Shift + 16-LUT Refinement</h3>
+            <p class="text-slate-200 text-[11px] leading-relaxed mb-4">
+              Decomposes into 2<sup>-q</sup> &times; 2<sup>-f/16</sup>. Integer shift handles coarse scale; a tiny 16-word table handles fractions.
+            </p>
+            <div class="p-2.5 rounded bg-slate-900 border border-slate-800 space-y-1 text-[11px] text-slate-200">
+              <div>&bull; Softmax Cycles: <strong class="text-cyan-400">1,880 (-128)</strong></div>
+              <div>&bull; ROM Overhead: <strong class="text-cyan-400">Only 16 words</strong></div>
+              <div>&bull; Mean Abs Error: <strong class="text-cyan-400 font-bold">0.000246 (400x lower)</strong></div>
+            </div>
+          </div>
+          <div class="text-[10px] text-cyan-300 pt-3 border-t border-cyan-500/30 font-semibold">
+            Maximum precision with zero latency penalty.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <!-- SLIDE 4: What We Overcome (Concrete Silicon Advancements) -->
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="4">
+      <div class="mb-3">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-1">Comparative Results</div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-100">What We Overcome (Prior Art vs. Ours)</h2>
+      </div>
+
+      <div class="rounded-xl border border-slate-800 bg-[#0C152B]/90 overflow-hidden mb-4">
+        <table class="w-full text-left text-xs mono">
+          <thead class="bg-slate-900/90 text-slate-400 border-b border-slate-800">
+            <tr>
+              <th class="p-3">Architectural Metric</th>
+              <th class="p-3">Version A (Baseline)</th>
+              <th class="p-3 text-emerald-400 font-bold">Tier 0 (Proposed)</th>
+              <th class="p-3 text-cyan-400 font-bold">Tier 1 (Proposed)</th>
+              <th class="p-3 text-right">Advantage / Improvement</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800 text-slate-200">
+            <tr>
+              <td class="p-3 font-semibold">Softmax Stage Cycles</td>
+              <td class="p-3 text-rose-300">2,008 cycles</td>
+              <td class="p-3 text-emerald-400 font-bold">1,880 cycles</td>
+              <td class="p-3 text-cyan-400 font-bold">1,880 cycles</td>
+              <td class="p-3 text-right text-emerald-400 font-bold">128 cycles saved (6.37%)</td>
+            </tr>
+            <tr>
+              <td class="p-3 font-semibold">Total Inference Cycles</td>
+              <td class="p-3 text-rose-300">5,688 cycles</td>
+              <td class="p-3 text-emerald-400 font-bold">5,560 cycles</td>
+              <td class="p-3 text-cyan-400 font-bold">5,560 cycles</td>
+              <td class="p-3 text-right text-emerald-400 font-bold">111.20 &mu;s vs 113.76 &mu;s</td>
+            </tr>
+            <tr>
+              <td class="p-3 font-semibold">Exponential ROM Size</td>
+              <td class="p-3 text-rose-300">256 entries</td>
+              <td class="p-3 text-emerald-400 font-bold">0 entries (None)</td>
+              <td class="p-3 text-cyan-400 font-bold">16 entries</td>
+              <td class="p-3 text-right text-emerald-400 font-bold">Up to 100% ROM eliminated</td>
+            </tr>
+            <tr>
+              <td class="p-3 font-semibold">Extra Pipeline Stages</td>
+              <td class="p-3 text-rose-300">Descale + Requant</td>
+              <td class="p-3 text-emerald-400 font-bold">None (Integer-Native)</td>
+              <td class="p-3 text-cyan-400 font-bold">None (Integer-Native)</td>
+              <td class="p-3 text-right text-emerald-400 font-bold">Eliminates 2 FSM stages</td>
+            </tr>
+            <tr>
+              <td class="p-3 font-semibold">Mean Absolute Error</td>
+              <td class="p-3 text-rose-300">0.100967</td>
+              <td class="p-3 text-emerald-400">0.002312</td>
+              <td class="p-3 text-cyan-400 font-bold">0.000246</td>
+              <td class="p-3 text-right text-cyan-400 font-bold">400x lower numerical error</td>
+            </tr>
+            <tr>
+              <td class="p-3 font-semibold">Classification Accuracy</td>
+              <td class="p-3">100% (18/18 PASS)</td>
+              <td class="p-3 text-emerald-400 font-bold">100% (18/18 PASS)</td>
+              <td class="p-3 text-cyan-400 font-bold">100% (18/18 PASS)</td>
+              <td class="p-3 text-right text-emerald-400 font-bold">0% Accuracy Loss</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="grid grid-cols-3 gap-3 text-center text-xs mono">
+        <div class="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">
+          <strong>128 Cycles Saved</strong> on Silicon
+        </div>
+        <div class="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300">
+          <strong>Zero Floating-Point Units</strong> Needed
+        </div>
+        <div class="p-3 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-300">
+          <strong>Deterministic Zero-Jitter</strong> Timing
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <!-- SLIDE 5: What the Switches & Terminal Telemetry Prove Live -->
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="5">
+      <div class="mb-2">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-0.5">Live Hardware Demonstration Script</div>
+        <h2 class="text-xl sm:text-2xl font-bold text-slate-100">What You Prove by Toggling Switches on the FPGA</h2>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 items-stretch text-xs mono">
+        <!-- Proof 1: Sentence Select -->
+        <div class="p-4 rounded-2xl border border-cyan-500/30 bg-[#0E1A33]/80 flex flex-col justify-between">
+          <div>
+            <div class="text-cyan-400 font-bold text-sm mb-2">1. Flipping SW[4:2] (Sentence 0 to 5)</div>
+            <div class="p-2.5 rounded bg-slate-900 border border-slate-800 text-[11px] text-slate-300 mb-3">
+              Observe: <strong class="text-emerald-400">HEX0 always equals HEX2</strong> for all 6 preloaded voice sentences.
+            </div>
+            <div class="text-slate-300 text-[11px] space-y-1">
+              <div>&bull; <strong>Proves End-to-End Correctness:</strong> All 8 pipeline stages compute without precision collapse.</div>
+              <div>&bull; <strong>Proves 100% Accuracy:</strong> Distinguishes <em>"turn on"</em> vs <em>"turn off"</em> and <em>"lights"</em> vs <em>"heat"</em>.</div>
+            </div>
+          </div>
+          <div class="mt-2 text-cyan-300 text-[10px] font-semibold border-t border-slate-800 pt-2">
+            100% Classification Accuracy Verified
+          </div>
+        </div>
+
+        <!-- Proof 2: Mode Select -->
+        <div class="p-4 rounded-2xl border-2 border-emerald-400 bg-[#0A261C]/90 flex flex-col justify-between glow-emerald">
+          <div>
+            <div class="text-emerald-300 font-bold text-sm mb-2">2. Flipping SW[1:0] (Mode 0, 1, A)</div>
+            <div class="p-2.5 rounded bg-slate-900 border border-slate-800 text-[11px] text-slate-200 mb-3 space-y-1">
+              <div>&bull; Mode 0 / 1 &rarr; HEX7-4: <strong class="text-emerald-400">15b8 (5,560 cyc)</strong></div>
+              <div>&bull; Mode A &rarr; HEX7-4: <strong class="text-rose-400">1638 (5,688 cyc)</strong></div>
+            </div>
+            <div class="text-slate-200 text-[11px] space-y-1">
+              <div>&bull; <strong>Proves Research Speedup:</strong> Live hardware clock cycle counter shows exactly <strong>128 cycles saved</strong>.</div>
+              <div>&bull; <strong>Proves Zero Overhead:</strong> Tier 0 &amp; 1 run faster while maintaining accuracy.</div>
+            </div>
+          </div>
+          <div class="mt-2 text-emerald-300 text-[10px] font-bold border-t border-emerald-500/30 pt-2">
+            6.37% Softmax Speedup Proven Live
+          </div>
+        </div>
+
+        <!-- Proof 3: Live Voice UART -->
+        <div class="p-4 rounded-2xl border border-purple-500/30 bg-[#160E2E]/80 flex flex-col justify-between">
+          <div>
+            <div class="text-purple-300 font-bold text-sm mb-2">3. Live Voice Host (Option [v])</div>
+            <div class="p-2.5 rounded bg-slate-900 border border-slate-800 text-[11px] text-slate-300 mb-3">
+              Observe: HEX2 displays <strong class="text-purple-300">'C'</strong> (Custom UART Packet) and HEX0 updates live.
+            </div>
+            <div class="text-slate-300 text-[11px] space-y-1">
+              <div>&bull; <strong>Proves Edge Deployment:</strong> Real microphone voice captured, tokenized on host, and streamed to FPGA @ 115200 Baud.</div>
+              <div>&bull; <strong>Autonomous FSM:</strong> FPGA overrides switches to run live speech tokens.</div>
+            </div>
+          </div>
+          <div class="mt-2 text-purple-300 text-[10px] font-semibold border-t border-slate-800 pt-2">
+            Multi-Modal Real-Time Edge Deployment
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <!-- SLIDE 6: Engineering Trade-offs & Critical Analysis -->
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="6">
+      <div class="mb-3">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-1">Honest Engineering Appraisal</div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-100">Engineering Trade-offs &amp; Limitations</h2>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1 items-stretch mono text-xs">
+        <!-- Trade-off 1 -->
+        <div class="p-4 rounded-2xl border border-slate-800 bg-[#0C152B]/90 flex flex-col justify-between">
+          <div>
+            <h3 class="text-sm font-bold text-cyan-300 mb-2">1. Precision vs. Memory Footprint (Tier 0 vs Tier 1)</h3>
+            <p class="text-slate-300 text-[11px] leading-relaxed">
+              &bull; <strong>Tier 0</strong> has 0-word memory cost but slightly higher MAE (0.0023) due to dropping fractional terms.<br>
+              &bull; <strong>Tier 1</strong> spends a minimal 16 words of ROM to drop MAE by 10x to 0.000246 with identical 1,880-cycle latency.
+            </p>
+          </div>
+          <div class="p-2 rounded bg-slate-900 text-slate-400 text-[10px] mt-2">
+            Conclusion: Tier 1 is optimal whenever 16 words of block memory are available.
+          </div>
+        </div>
+
+        <!-- Trade-off 2 -->
+        <div class="p-4 rounded-2xl border border-slate-800 bg-[#0C152B]/90 flex flex-col justify-between">
+          <div>
+            <h3 class="text-sm font-bold text-emerald-300 mb-2">2. Fixed Tensor Dimensions (L=8, D=32)</h3>
+            <p class="text-slate-300 text-[11px] leading-relaxed">
+              &bull; Fixed sequence length guarantees strictly deterministic 5,560-cycle inference with zero memory management unit (MMU) overhead.<br>
+              &bull; <em>Limitation:</em> Longer sentences must be truncated or processed in 8-token sliding windows.
+            </p>
+          </div>
+          <div class="p-2 rounded bg-slate-900 text-slate-400 text-[10px] mt-2">
+            Conclusion: Perfectly suited for short embedded voice command spotting.
+          </div>
+        </div>
+
+        <!-- Trade-off 3 -->
+        <div class="p-4 rounded-2xl border border-slate-800 bg-[#0C152B]/90 flex flex-col justify-between">
+          <div>
+            <h3 class="text-sm font-bold text-amber-300 mb-2">3. Sequential Restoring Division vs. Area</h3>
+            <p class="text-slate-300 text-[11px] leading-relaxed">
+              &bull; The 24-bit bit-serial restoring divider takes 24 cycles per token &times; 8 = 192 cycles/row.<br>
+              &bull; A fully parallel array divider would complete in 1 cycle but would consume ~4,000 extra Logic Elements.
+            </p>
+          </div>
+          <div class="p-2 rounded bg-slate-900 text-slate-400 text-[10px] mt-2">
+            Conclusion: Sequential division was chosen to keep total LE utilization under 20%.
+          </div>
+        </div>
+
+        <!-- Trade-off 4 -->
+        <div class="p-4 rounded-2xl border border-slate-800 bg-[#0C152B]/90 flex flex-col justify-between">
+          <div>
+            <h3 class="text-sm font-bold text-purple-300 mb-2">4. On-Chip ROM vs. Dynamic Model Weight Loading</h3>
+            <p class="text-slate-300 text-[11px] leading-relaxed">
+              &bull; Baking weights into Verilog synthesis ROMs eliminates external SDRAM controllers and bus latency.<br>
+              &bull; Changing model weights requires updating Verilog ROMs and recompiling the FPGA bitstream.
+            </p>
+          </div>
+          <div class="p-2 rounded bg-slate-900 text-slate-400 text-[10px] mt-2">
+            Conclusion: Ideal for dedicated embedded appliance controllers.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <!-- SLIDE 7: Future Scope & Roadmap -->
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="7">
+      <div class="mb-3">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-1">Extensions &amp; Next Steps</div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-100">Future Scope &amp; Scalability Roadmap</h2>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 flex-1 items-stretch mono text-xs">
+        <div class="p-4 rounded-2xl border border-cyan-500/30 bg-[#0E1A33]/80 flex flex-col justify-between">
+          <div>
+            <div class="h-7 w-7 rounded bg-cyan-500/20 text-cyan-400 font-bold flex items-center justify-center mb-3">1</div>
+            <h3 class="font-bold text-slate-100 mb-2">Radix-4 / Goldschmidt Divider</h3>
+            <p class="text-slate-300 text-[11px] leading-relaxed">
+              Replacing the 24-cycle restoring divider with a Radix-4 division unit reduces division cycles from 192 down to ~48 cycles per row.
+            </p>
+          </div>
+          <div class="text-cyan-400 text-[10px] pt-2 border-t border-slate-800 font-semibold">~2.5x Total Speedup</div>
+        </div>
+
+        <div class="p-4 rounded-2xl border border-emerald-500/30 bg-[#0B211C]/80 flex flex-col justify-between">
+          <div>
+            <div class="h-7 w-7 rounded bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center mb-3">2</div>
+            <h3 class="font-bold text-slate-100 mb-2">Multi-Head Self-Attention (MHSA)</h3>
+            <p class="text-slate-300 text-[11px] leading-relaxed">
+              Scaling the single-head architecture to 4 parallel attention heads (h=4, d<sub>k</sub>=8) to capture richer contextual semantics.
+            </p>
+          </div>
+          <div class="text-emerald-400 text-[10px] pt-2 border-t border-slate-800 font-semibold">Higher NLP Expressivity</div>
+        </div>
+
+        <div class="p-4 rounded-2xl border border-purple-500/30 bg-[#160E2E]/80 flex flex-col justify-between">
+          <div>
+            <div class="h-7 w-7 rounded bg-purple-500/20 text-purple-400 font-bold flex items-center justify-center mb-3">3</div>
+            <h3 class="font-bold text-slate-100 mb-2">On-Chip MFCC Audio Front-End</h3>
+            <p class="text-slate-300 text-[11px] leading-relaxed">
+              Integrating an on-chip Mel-Frequency Cepstral Coefficients (MFCC) DSP pipeline so the FPGA processes microphone analog signals directly.
+            </p>
+          </div>
+          <div class="text-purple-400 text-[10px] pt-2 border-t border-slate-800 font-semibold">100% Host-Independent</div>
+        </div>
+
+        <div class="p-4 rounded-2xl border border-amber-500/30 bg-[#21190B]/80 flex flex-col justify-between">
+          <div>
+            <div class="h-7 w-7 rounded bg-amber-500/20 text-amber-400 font-bold flex items-center justify-center mb-3">4</div>
+            <h3 class="font-bold text-slate-100 mb-2">Dynamic Attention Pruning</h3>
+            <p class="text-slate-300 text-[11px] leading-relaxed">
+              Adding early threshold comparators to skip Softmax and multiplication rows where attention scores S are below activation threshold.
+            </p>
+          </div>
+          <div class="text-amber-400 text-[10px] pt-2 border-t border-slate-800 font-semibold">Dynamic Energy Savings</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <!-- SLIDE 8: Top Faculty Viva Q&A — Mathematical & Algorithmic -->
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="8">
+      <div class="mb-2">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-0.5">Faculty Defense Preparation</div>
+        <h2 class="text-xl sm:text-2xl font-bold text-slate-100">Faculty Defense Q&amp;A: Mathematical Core</h2>
+      </div>
+
+      <div class="space-y-3 flex-1 flex flex-col justify-between mono text-xs">
+        <div class="p-3.5 rounded-xl border border-cyan-500/30 bg-[#0E1A33]/80">
+          <div class="text-cyan-300 font-bold text-[12px] mb-1">
+            Q1: &ldquo;Why did you choose 23/16 specifically for log<sub>2</sub>(e)?&rdquo;
+          </div>
+          <p class="text-slate-300 text-[11px] leading-relaxed">
+            <strong>Answer:</strong> In base-2 Softmax, log<sub>2</sub>(e) &asymp; 1.442695. In fixed-point digital hardware with a 4-bit fraction (Q4.4), the closest power-of-two fraction is 23/16 = 1.4375 (only 0.36% relative error). Dividing by 16 is free in Verilog—it is simply taking bits [7:4] as quotient and [3:0] as fraction without any divider logic.
+          </p>
+        </div>
+
+        <div class="p-3.5 rounded-xl border border-emerald-500/30 bg-[#0B211C]/80">
+          <div class="text-emerald-300 font-bold text-[12px] mb-1">
+            Q2: &ldquo;How does Tier 1 achieve 400x lower error than Version A without adding extra clock cycles?&rdquo;
+          </div>
+          <p class="text-slate-300 text-[11px] leading-relaxed">
+            <strong>Answer:</strong> Version A quantizes the entire [-8, 0] exponent range across 256 entries. Tier 1 decomposes 2<sup>-q</sup> &times; 2<sup>-f/16</sup>. The coarse decay 2<sup>-q</sup> is computed exactly by a barrel shift, while the 16-entry LUT only needs to resolve the small interval [0, 1). The 16-word lookup happens in parallel with the shift, incurring 0 extra cycles.
+          </p>
+        </div>
+
+        <div class="p-3.5 rounded-xl border border-purple-500/30 bg-[#160E2E]/80">
+          <div class="text-purple-300 font-bold text-[12px] mb-1">
+            Q3: &ldquo;What is the purpose of subtracting the maximum value (z = x - max(x))?&rdquo;
+          </div>
+          <p class="text-slate-300 text-[11px] leading-relaxed">
+            <strong>Answer:</strong> This is Safe Softmax. Calculating e<sup>x</sup> on positive numbers causes rapid integer register overflow. By setting z = x - max(x), all z &le; 0, which guarantees e<sup>z</sup> &isin; (0, 1]. This guarantees intermediate sums fit safely within 16-bit accumulators.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <!-- SLIDE 9: Top Faculty Viva Q&A — RTL Hardware & Silicon -->
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="9">
+      <div class="mb-2">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-0.5">Faculty Defense Preparation</div>
+        <h2 class="text-xl sm:text-2xl font-bold text-slate-100">Faculty Defense Q&amp;A: Hardware Architecture</h2>
+      </div>
+
+      <div class="space-y-3 flex-1 flex flex-col justify-between mono text-xs">
+        <div class="p-3.5 rounded-xl border border-cyan-500/30 bg-[#0E1A33]/80">
+          <div class="text-cyan-300 font-bold text-[12px] mb-1">
+            Q4: &ldquo;Why use a 24-bit restoring divider instead of Verilog's behavioral division operator (/)?&rdquo;
+          </div>
+          <p class="text-slate-300 text-[11px] leading-relaxed">
+            <strong>Answer:</strong> The behavioral division operator (/) synthesizes into a massive combinational path that creates long routing delays and destroys the clock frequency. Our sequential 24-bit restoring divider shifts and subtracts 1 bit per cycle, guaranteeing clean 50 MHz operation with minimal Logic Element usage.
+          </p>
+        </div>
+
+        <div class="p-3.5 rounded-xl border border-emerald-500/30 bg-[#0B211C]/80">
+          <div class="text-emerald-300 font-bold text-[12px] mb-1">
+            Q5: &ldquo;Why does every command take exactly 5,560 clock cycles?&rdquo;
+          </div>
+          <p class="text-slate-300 text-[11px] leading-relaxed">
+            <strong>Answer:</strong> Our pipeline is strictly deterministic. Dimensions are fixed (L=8, D=32), there are no cache misses or dynamic while-loops, and the restoring divider executes exactly 24 iterations per token. This zero-jitter execution is critical for hard real-time edge embedded systems.
+          </p>
+        </div>
+
+        <div class="p-3.5 rounded-xl border border-purple-500/30 bg-[#160E2E]/80">
+          <div class="text-purple-300 font-bold text-[12px] mb-1">
+            Q6: &ldquo;How much FPGA silicon does your accelerator consume?&rdquo;
+          </div>
+          <p class="text-slate-300 text-[11px] leading-relaxed">
+            <strong>Answer:</strong> In Quartus Prime compilation, the entire top-level design consumes only <strong>20,635 Logic Elements (18%)</strong> and <strong>8 Embedded 9-bit Multipliers (2%)</strong> out of 114,480 LEs available on the EP4CE115 FPGA, proving it is highly viable for low-cost edge deployment.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <!-- SLIDE 10: Conclusion & Summary -->
+    <!-- ───────────────────────────────────────────────────────────────── -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="10">
+      <div class="mb-3">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-1">Summary &amp; Deliverables</div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-100">Conclusion &amp; Defense Summary</h2>
+      </div>
+
+      <div class="rounded-2xl border border-cyan-500/40 bg-gradient-to-r from-cyan-950/40 via-[#0B1A33]/80 to-emerald-950/40 p-5 text-center mb-4 glow-cyan">
+        <p class="text-base sm:text-xl font-bold text-slate-100 italic">
+          &ldquo;Integer-native Softmax eliminates the fixed-point detour, saving 128 cycles per inference on Cyclone IV FPGA while preserving 100% classification accuracy.&rdquo;
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1 items-stretch mono text-xs">
+        <div class="lg:col-span-7 rounded-2xl border border-emerald-500/30 bg-[#0B211C]/80 p-5 flex flex-col justify-between">
+          <div>
+            <div class="text-xs font-bold text-emerald-300 uppercase tracking-wider mb-2">Key Research Claims Verified on Silicon</div>
+            <div class="space-y-2 text-slate-200 text-[11px]">
+              <div class="flex items-center gap-2"><span class="text-emerald-400 font-bold">&check;</span> 128 cycles saved in Softmax stage (1,880 vs 2,008 cycles).</div>
+              <div class="flex items-center gap-2"><span class="text-emerald-400 font-bold">&check;</span> Tier 0 achieves zero exponential ROM overhead.</div>
+              <div class="flex items-center gap-2"><span class="text-emerald-400 font-bold">&check;</span> Tier 1 achieves 400x lower numerical error (MAE 0.000246).</div>
+              <div class="flex items-center gap-2"><span class="text-emerald-400 font-bold">&check;</span> 18/18 ModelSim &amp; physical hardware test cases passed (100% accuracy).</div>
+              <div class="flex items-center gap-2"><span class="text-emerald-400 font-bold">&check;</span> Live UART speech streaming host validated on DE2-115 at 50 MHz.</div>
+            </div>
+          </div>
+          <div class="mt-3 text-center text-emerald-400 font-bold text-sm">
+            Thank You &bull; Open for Questions
+          </div>
+        </div>
+
+        <div class="lg:col-span-5 rounded-2xl border border-slate-800 bg-[#0C152B]/80 p-5 flex flex-col justify-between text-[11px]">
+          <div class="space-y-2">
+            <div class="text-cyan-300 font-bold text-xs uppercase tracking-wider">Project Repository &amp; Artifacts</div>
+            <div>
+              <span class="text-slate-400">Verilog RTL:</span>
+              <span class="text-slate-200 font-bold">10 Modules (Pure Verilog-2001)</span>
+            </div>
+            <div>
+              <span class="text-slate-400">Target FPGA:</span>
+              <span class="text-slate-200 font-bold">Cyclone IV EP4CE115F29C7</span>
+            </div>
+            <div>
+              <span class="text-slate-400">Synthesis Bitstream:</span>
+              <span class="text-emerald-400 font-bold">int8_transformer_de2_115.sof</span>
+            </div>
+            <div>
+              <span class="text-slate-400">Host Interface:</span>
+              <span class="text-cyan-400 font-bold">Python SpeechRecognition &bull; UART Host</span>
+            </div>
+          </div>
+
+          <div class="pt-3 border-t border-slate-800">
+            <div class="text-slate-400">GitHub:</div>
+            <a href="https://github.com/Shailesh-A-hub/int8-transformer-de2-115" target="_blank" class="text-cyan-400 hover:underline break-all font-bold">
+              github.com/Shailesh-A-hub/int8-transformer-de2-115
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Bottom Footer with Slide Progress Dots -->
+  <footer class="h-12 border-t border-slate-800 bg-[#0B1326]/90 px-6 flex items-center justify-between z-50 text-xs text-slate-400 mono flex-shrink-0">
+    <div class="flex items-center gap-2">
+      <span class="text-slate-500">Navigate:</span>
+      <span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">&larr;</span>
+      <span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">&rarr;</span>
+      <span class="text-slate-500 hidden sm:inline">or Spacebar</span>
+    </div>
+
+    <!-- Slide Dots -->
+    <div class="flex items-center gap-1.5" id="slide-dots"></div>
+
+    <div class="flex items-center gap-2">
+      <span class="text-emerald-400">&bull; Viva Presentation Ready</span>
+      <span class="text-slate-600">|</span>
+      <span class="text-cyan-400">DE2-115 Cyclone IV</span>
+    </div>
+  </footer>
+
+  <!-- Overview Grid Modal (10 Slides) -->
+  <div id="overview-modal" class="fixed inset-0 bg-[#070D18]/95 backdrop-blur-md z-50 p-6 hidden flex-col justify-between overflow-y-auto">
+    <div class="flex items-center justify-between border-b border-slate-800 pb-4 mb-6">
+      <h2 class="text-lg font-bold text-slate-100">All Defense Slides (10 Slides)</h2>
+      <button onclick="toggleOverview()" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs mono">
+        Close (Esc)
+      </button>
+    </div>
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 flex-1" id="overview-grid"></div>
+  </div>
+
+  <script>
+    let currentSlide = 1;
+    const totalSlides = 10;
+    const slides = document.querySelectorAll('.slide');
+
+    const slideTitles = [
+      "1. Title & Viva Introduction",
+      "2. Project Objectives & Purpose",
+      "3. Why Propose Tier 0 & Tier 1?",
+      "4. What We Overcome (Prior Art vs Ours)",
+      "5. Live Hardware Switch Proofs",
+      "6. Engineering Trade-Offs & Analysis",
+      "7. Future Scope & Roadmap",
+      "8. Defense Q&A: Mathematical Core",
+      "9. Defense Q&A: Hardware Architecture",
+      "10. Conclusion & Defense Summary"
+    ];
+
+    function showSlide(index) {
+      if (index < 1) index = 1;
+      if (index > totalSlides) index = totalSlides;
+      
+      currentSlide = index;
+      slides.forEach((s, idx) => {
+        if (idx + 1 === currentSlide) {
+          s.classList.add('active');
+        } else {
+          s.classList.remove('active');
+        }
+      });
+
+      document.getElementById('current-slide-num').textContent = currentSlide;
+      updateDots();
+    }
+
+    function nextSlide() {
+      if (currentSlide < totalSlides) {
+        showSlide(currentSlide + 1);
+      }
+    }
+
+    function prevSlide() {
+      if (currentSlide > 1) {
+        showSlide(currentSlide - 1);
+      }
+    }
+
+    function updateDots() {
+      const container = document.getElementById('slide-dots');
+      container.innerHTML = '';
+      for (let i = 1; i <= totalSlides; i++) {
+        const dot = document.createElement('button');
+        dot.className = `w-2 h-2 rounded-full transition-all ${i === currentSlide ? 'bg-cyan-400 w-5 glow-cyan' : 'bg-slate-700 hover:bg-slate-500'}`;
+        dot.onclick = () => showSlide(i);
+        dot.title = slideTitles[i-1];
+        container.appendChild(dot);
+      }
+    }
+
+    function toggleOverview() {
+      const modal = document.getElementById('overview-modal');
+      modal.classList.toggle('hidden');
+      modal.classList.toggle('flex');
+      if (!modal.classList.contains('hidden')) {
+        renderOverviewGrid();
+      }
+    }
+
+    function renderOverviewGrid() {
+      const grid = document.getElementById('overview-grid');
+      grid.innerHTML = '';
+      for (let i = 1; i <= totalSlides; i++) {
+        const card = document.createElement('div');
+        card.className = `p-4 rounded-xl border ${i === currentSlide ? 'border-cyan-400 bg-cyan-950/30 glow-cyan' : 'border-slate-800 bg-[#0C152B]'} hover:border-cyan-500/60 transition cursor-pointer flex flex-col justify-between`;
+        card.onclick = () => {
+          showSlide(i);
+          toggleOverview();
+        };
+        card.innerHTML = `
+          <div class="text-xs text-cyan-400 mono font-bold mb-2">Slide ${i}</div>
+          <div class="text-sm font-semibold text-slate-200">${slideTitles[i-1]}</div>
+          <div class="mt-4 text-[10px] text-slate-500 mono">Click to jump &rarr;</div>
+        `;
+        grid.appendChild(card);
+      }
+    }
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    }
+
+    // Keyboard controls
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+        nextSlide();
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        prevSlide();
+      } else if (e.key === 'Home') {
+        showSlide(1);
+      } else if (e.key === 'End') {
+        showSlide(totalSlides);
+      } else if (e.key === 'f' || e.key === 'F') {
+        toggleFullscreen();
+      } else if (e.key === 'g' || e.key === 'G') {
+        toggleOverview();
+      } else if (e.key === 'Escape') {
+        const modal = document.getElementById('overview-modal');
+        if (!modal.classList.contains('hidden')) {
+          toggleOverview();
+        }
+      }
+    });
+
+    // Initialize
+    updateDots();
+  </script>
+</body>
+</html>
