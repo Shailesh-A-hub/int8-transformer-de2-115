@@ -1080,9 +1080,9 @@
   </div>
 
   <script>
-    let currentSlide = 1;
-    const totalSlides = 11;
     const slides = document.querySelectorAll('.slide');
+    const totalSlides = slides.length;
+    let currentSlide = 1;
 
     const slideTitles = [
       "1. Title & Authors",
@@ -1111,7 +1111,18 @@
         }
       });
 
-      document.getElementById('current-slide-num').textContent = currentSlide;
+      const curEl = document.getElementById('current-slide-num');
+      if (curEl) curEl.textContent = currentSlide;
+      const totEl = document.getElementById('total-slides-num');
+      if (totEl) totEl.textContent = totalSlides;
+
+      // Update URL hash without jumping page scroll
+      if (history.replaceState) {
+        history.replaceState(null, null, '#' + currentSlide);
+      } else {
+        location.hash = currentSlide;
+      }
+
       updateDots();
     }
 
@@ -1129,12 +1140,13 @@
 
     function updateDots() {
       const container = document.getElementById('slide-dots');
+      if (!container) return;
       container.innerHTML = '';
       for (let i = 1; i <= totalSlides; i++) {
         const dot = document.createElement('button');
         dot.className = `w-2 h-2 rounded-full transition-all ${i === currentSlide ? 'bg-cyan-400 w-5 glow-cyan' : 'bg-slate-700 hover:bg-slate-500'}`;
         dot.onclick = () => showSlide(i);
-        dot.title = slideTitles[i-1];
+        dot.title = slideTitles[i-1] || `Slide ${i}`;
         container.appendChild(dot);
       }
     }
@@ -1150,6 +1162,7 @@
 
     function renderOverviewGrid() {
       const grid = document.getElementById('overview-grid');
+      if (!grid) return;
       grid.innerHTML = '';
       for (let i = 1; i <= totalSlides; i++) {
         const card = document.createElement('div');
@@ -1160,7 +1173,7 @@
         };
         card.innerHTML = `
           <div class="text-xs text-cyan-400 mono font-bold mb-2">Slide ${i}</div>
-          <div class="text-sm font-semibold text-slate-200">${slideTitles[i-1]}</div>
+          <div class="text-sm font-semibold text-slate-200">${slideTitles[i-1] || `Slide ${i}`}</div>
           <div class="mt-4 text-[10px] text-slate-500 mono">Click to jump &rarr;</div>
         `;
         grid.appendChild(card);
@@ -1191,14 +1204,27 @@
         toggleOverview();
       } else if (e.key === 'Escape') {
         const modal = document.getElementById('overview-modal');
-        if (!modal.classList.contains('hidden')) {
+        if (modal && !modal.classList.contains('hidden')) {
           toggleOverview();
         }
       }
     });
 
-    // Initialize
-    updateDots();
+    // Hash change listener (e.g. clicking link with #10 or #11)
+    window.addEventListener('hashchange', () => {
+      const parsed = parseInt(window.location.hash.replace(/\D/g, ''), 10);
+      if (parsed && parsed >= 1 && parsed <= totalSlides && parsed !== currentSlide) {
+        showSlide(parsed);
+      }
+    });
+
+    // Initial load: parse hash if present
+    const initHash = parseInt(window.location.hash.replace(/\D/g, ''), 10);
+    if (initHash && initHash >= 1 && initHash <= totalSlides) {
+      showSlide(initHash);
+    } else {
+      showSlide(1);
+    }
   </script>
 </body>
 </html>
