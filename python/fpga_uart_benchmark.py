@@ -122,6 +122,36 @@ def run_benchmark_command(ser):
 # Voice / Speech-to-Text Input
 # ==============================================================================
 
+# Optional Windows unmute check
+try:
+    from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+    import comtypes
+    from ctypes import cast, POINTER
+    PYCAW_AVAILABLE = True
+except Exception:
+    PYCAW_AVAILABLE = False
+
+
+def ensure_microphone_unmuted():
+    """Ensure the default Windows microphone is not muted."""
+    if not PYCAW_AVAILABLE:
+        return
+    try:
+        mic = AudioUtilities.GetMicrophone()
+        if mic:
+            interface = mic.Activate(IAudioEndpointVolume._iid_, comtypes.CLSCTX_ALL, None)
+            vol = cast(interface, POINTER(IAudioEndpointVolume))
+            if vol.GetMute():
+                print("[MIC SETUP] Microphone was muted in Windows. Unmuting now...")
+                vol.SetMute(0, None)
+            level = vol.GetMasterVolumeLevelScalar()
+            if level < 0.5:
+                print(f"[MIC SETUP] Microphone volume was low ({int(level*100)}%). Boosting to 85%...")
+                vol.SetMasterVolumeLevelScalar(0.85, None)
+    except Exception:
+        pass
+
+
 def list_microphones():
     """Print all available audio input devices."""
     if not HAS_SR:
@@ -133,45 +163,72 @@ def list_microphones():
     for idx, name in enumerate(names):
         print(f"  [{idx:2d}] {name}")
     print("-" * 50)
-    print("Use --mic <number> to select a specific device (e.g. --mic 1)\n")
+    print("Use --mic <number> to select a specific device (e.g. --mic 5)\n")
 
 
 def find_default_mic_index():
-    """Auto-detect the best physical microphone (e.g. Realtek) if available."""
+    """Auto-detect the working microphone with active live audio signal."""
     if not HAS_SR:
         return None
     try:
-        names = sr.Microphone.list_microphone_names()
-        # Prefer Realtek internal mic if present
-        for idx, name in enumerate(names):
-            if "realtek" in name.lower() and "mic" in name.lower() and "stereo" not in name.lower():
-                return idx
-        # Otherwise look for any microphone
-        for idx, name in enumerate(names):
-            if "mic" in name.lower() and "mapper" not in name.lower():
-                return idx
+        import pyaudio
+        try:
+            import audioop
+        except ImportError:
+            import pyaudio.audioop as audioop
+
+        p = pyaudio.PyAudio()
+        best_idx = None
+        best_score = 0
+
+        for i in range(p.get_device_count()):
+            try:
+                info = p.get_device_info_by_index(i)
+                if info.get('maxInputChannels', 0) > 0:
+                    api_name = p.get_host_api_info_by_index(info['hostApi'])['name']
+                    rate = int(info.get('defaultSampleRate', 44100))
+                    stream = p.open(
+                        input_device_index=i,
+                        channels=1,
+                        format=pyaudio.paInt16,
+                        rate=rate,
+                        frames_per_buffer=1024,
+                        input=True
+                    )
+                    data = stream.read(1024, exception_on_overflow=False)
+                    stream.close()
+                    rms = audioop.rms(data, 2)
+                    score = rms * (2.0 if "DirectSound" in api_name else 1.0)
+                    if score > best_score and rms > 50:
+                        best_score = score
+                        best_idx = i
+            except Exception:
+                pass
+        p.terminate()
+        if best_idx is not None:
+            return best_idx
     except Exception:
         pass
-    return None
+    return 5
 
 
-def capture_voice_command():
+def capture_voice_command(mic_index=None):
     """
-    Capture one spoken sentence from the laptop microphone.
-    Uses the same pattern as the working reference implementation:
-      - energy_threshold set to 300 before calibration
-      - Calibration + listening happen inside ONE single 'with Microphone()' block
-      - Clear 'Speak now:' prompt printed before listen() call
-    Returns transcribed text string, or None on any error.
+    Capture one spoken sentence from the microphone and transcribe via Google Speech API.
     """
     if not HAS_SR:
         print("[ERROR] speech_recognition not installed.")
         print("        Run:  pip install SpeechRecognition pyaudio")
         return None
 
+    ensure_microphone_unmuted()
+
+    if mic_index is None:
+        mic_index = find_default_mic_index()
+
     recognizer = sr.Recognizer()
-    recognizer.pause_threshold = 0.8     # stop after 0.8 s silence
-    recognizer.energy_threshold = 300    # manual baseline (same as working reference)
+    recognizer.pause_threshold = 0.8
+    recognizer.energy_threshold = 300
 
     print("\n" + "-" * 60)
     print("  [MIC] MICROPHONE ACTIVE  -- Speak your command now...")
@@ -179,13 +236,11 @@ def capture_voice_command():
     print("-" * 60)
 
     try:
-        with sr.Microphone() as source:
-            # Calibrate + listen in ONE with-block (key fix from reference)
+        with sr.Microphone(device_index=mic_index, sample_rate=44100) as source:
             print("  [Calibrating mic for background noise... stay quiet for 1 sec]")
             recognizer.adjust_for_ambient_noise(source, duration=1)
-            print("  [OK] Ready! Speak now: ", end="", flush=True)
+            print(f"  [OK] Ready! Speak now (threshold={int(recognizer.energy_threshold)}): ", end="", flush=True)
 
-            # Listen: 8 s to start speaking, 5 s max phrase length
             audio = recognizer.listen(source, timeout=8, phrase_time_limit=5)
 
         print()  # newline after "Speak now:"
@@ -205,9 +260,8 @@ def capture_voice_command():
         print(f"\n  [!] Google Speech API error (check internet): {e}")
         print("      Tip: Use text mode [type your sentence] if no internet.")
         return None
-    except OSError:
-        print("\n  [!] Microphone not found or access denied.")
-        print("      Go to: Settings -> Privacy -> Microphone -> Allow apps")
+    except OSError as e:
+        print(f"\n  [!] Microphone error: {e}")
         return None
 
 
@@ -264,7 +318,7 @@ def voice_terminal(ser, mic_index=None):
                 continue
             elif user_input == '':
                 # Empty ENTER → activate mic and speak
-                sentence = capture_voice_command()
+                sentence = capture_voice_command(mic_index=mic_index)
                 if sentence:
                     send_custom_sentence(ser, sentence, mode_byte=current_mode)
             else:
