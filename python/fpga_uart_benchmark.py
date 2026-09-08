@@ -122,49 +122,100 @@ def run_benchmark_command(ser):
 # Voice / Speech-to-Text Input
 # ==============================================================================
 
+def list_microphones():
+    """Print all available audio input devices."""
+    if not HAS_SR:
+        print("[ERROR] SpeechRecognition not installed.")
+        return
+    names = sr.Microphone.list_microphone_names()
+    print("\nAvailable Microphone Devices:")
+    print("-" * 50)
+    for idx, name in enumerate(names):
+        print(f"  [{idx:2d}] {name}")
+    print("-" * 50)
+    print("Use --mic <number> to select a specific device (e.g. --mic 1)\n")
+
+
+def find_default_mic_index():
+    """Auto-detect the best physical microphone (e.g. Realtek) if available."""
+    if not HAS_SR:
+        return None
+    try:
+        names = sr.Microphone.list_microphone_names()
+        # Prefer Realtek internal mic if present
+        for idx, name in enumerate(names):
+            if "realtek" in name.lower() and "mic" in name.lower() and "stereo" not in name.lower():
+                return idx
+        # Otherwise look for any microphone
+        for idx, name in enumerate(names):
+            if "mic" in name.lower() and "mapper" not in name.lower():
+                return idx
+    except Exception:
+        pass
+    return None
+
+
 def listen_and_transcribe(recognizer, microphone):
     """Capture one utterance from the microphone and return transcribed text."""
-    print("\n[VOICE] Listening... (speak now)")
+    print("\n[VOICE] 🎤 Listening... SPEAK NOW!")
     try:
         with microphone as source:
-            recognizer.adjust_for_ambient_noise(source, duration=0.5)
-            audio = recognizer.listen(source, timeout=6, phrase_time_limit=8)
-        print("[VOICE] Processing speech...")
+            audio = recognizer.listen(source, timeout=7, phrase_time_limit=8)
+        print("[VOICE] ⏳ Audio captured! Transcribing with Google STT...")
         text = recognizer.recognize_google(audio)
-        print(f"[VOICE] Heard: \"{text}\"")
+        print(f"[VOICE] ✅ Heard: \"{text}\"")
         return text
     except sr.WaitTimeoutError:
-        print("[VOICE] No speech detected (timeout). Try again.")
+        print("[VOICE] ⚠️  No speech detected (timeout).")
+        print("        Tip: Speak clearly, or use --mic <index> to select the right microphone.")
         return None
     except sr.UnknownValueError:
-        print("[VOICE] Could not understand audio. Please speak clearly.")
+        print("[VOICE] ❓ Could not understand audio. Please speak clearly into your mic.")
         return None
     except sr.RequestError as e:
-        print(f"[VOICE] Google STT error: {e}")
-        print("[VOICE] Check your internet connection.")
+        print(f"[VOICE] ❌ Google STT error: {e}")
+        print("        Please check your internet connection.")
         return None
 
 
-def voice_terminal(ser):
+def voice_terminal(ser, mic_index=None):
     """Voice-driven interactive terminal: speak a sentence, FPGA classifies it."""
     if not HAS_SR:
         print("[ERROR] SpeechRecognition library not found.")
         print("       Install with: pip install SpeechRecognition pyaudio")
         return
 
-    recognizer = sr.Recognizer()
+    # Auto-detect mic if not provided
+    if mic_index is None:
+        mic_index = find_default_mic_index()
+
     try:
-        microphone = sr.Microphone()
+        microphone = sr.Microphone(device_index=mic_index)
+        mic_name = sr.Microphone.list_microphone_names()[mic_index] if mic_index is not None else "System Default"
     except Exception as e:
-        print(f"[ERROR] Could not open microphone: {e}")
-        print("       Make sure a microphone is connected and not in use.")
+        print(f"[ERROR] Could not open microphone (index={mic_index}): {e}")
+        print("       Run with --list-mics to see available audio devices.")
         return
 
-    current_mode = 1  # Default: Tier 1
+    recognizer = sr.Recognizer()
+    recognizer.dynamic_energy_threshold = True
+    recognizer.pause_threshold = 0.8
 
     print("\n" + "=" * 76)
     print("   DE2-115 INT8 TRANSFORMER -- VOICE INTERACTIVE CONSOLE")
     print("=" * 76)
+    print(f" Microphone: [{mic_index if mic_index is not None else 'Default'}] {mic_name}")
+    print(" [VOICE] Calibrating microphone for ambient noise (1 sec, stay quiet)...")
+    try:
+        with microphone as source:
+            recognizer.adjust_for_ambient_noise(source, duration=1.0)
+        print(f" [VOICE] Ready! Ambient noise threshold set to: {int(recognizer.energy_threshold)}")
+    except Exception as e:
+        print(f" [WARNING] Could not calibrate noise: {e}. Using default threshold.")
+
+    current_mode = 1  # Default: Tier 1
+
+    print("-" * 76)
     print(" SPEAK any of these sentences into your microphone:")
     print("   - \"turn on the lights\"")
     print("   - \"turn off the lights\"")
@@ -173,11 +224,11 @@ def voice_terminal(ser):
     print("   - \"turn on the heat\"")
     print("   - \"turn off the heat\"")
     print("-" * 76)
-    print(" KEYBOARD COMMANDS (typed, not spoken):")
+    print(" KEYBOARD COMMANDS:")
+    print("   [ENTER] (empty) -> Speak a sentence")
     print("   [0] Switch to Tier 0 | [1] Switch to Tier 1 | [a] Switch to Version A")
     print("   [q] Quit")
     print("=" * 76)
-    print("\nPress ENTER to start listening, or type a command, then press ENTER.")
 
     while True:
         try:
@@ -333,9 +384,15 @@ def main():
     parser.add_argument("--sentence", "-s", type=str, default=None, help="Directly type and run a single sentence")
     parser.add_argument("--interactive", "-i", action="store_true", help="Run interactive console (default)")
     parser.add_argument("--voice", "-v", action="store_true", help="Voice input mode: speak sentences, FPGA classifies them")
+    parser.add_argument("--mic", "-m", type=int, default=None, help="Microphone device index (use --list-mics to see available)")
+    parser.add_argument("--list-mics", action="store_true", help="List all available microphone audio devices and exit")
     parser.add_argument("--benchmark", action="store_true", help="Directly trigger and print cycle benchmark")
     parser.add_argument("--mock", action="store_true", help="Display theoretical hardware metrics without opening port")
     args = parser.parse_args()
+
+    if args.list_mics:
+        list_microphones()
+        return
 
     if args.mock or not HAS_SERIAL:
         print("\n=======================================================================")
@@ -370,7 +427,7 @@ def main():
         elif args.benchmark:
             run_benchmark_command(ser)
         elif args.voice:
-            voice_terminal(ser)
+            voice_terminal(ser, mic_index=args.mic)
         else:
             interactive_terminal(ser)
     finally:
