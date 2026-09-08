@@ -1,9 +1,16 @@
-﻿import json
+import json
 import re
 import sys
 import time
 from pathlib import Path
 import numpy as np
+
+# ── Voice capture (optional, graceful fallback if mic unavailable) ──────────
+try:
+    import speech_recognition as sr
+    VOICE_AVAILABLE = True
+except ImportError:
+    VOICE_AVAILABLE = False
 
 # Load vocabulary and intent metadata
 ROOT = Path(__file__).resolve().parents[1]
@@ -146,6 +153,58 @@ class VirtualFPGA:
             "logits": logits.tolist(),
         }
 
+def capture_voice_command() -> str | None:
+    """
+    Capture one spoken sentence from the laptop microphone.
+    Returns the transcribed text string, or None on any error.
+    """
+    if not VOICE_AVAILABLE:
+        print("[ERROR] speech_recognition not installed. Run:  pip install SpeechRecognition pyaudio")
+        return None
+
+    recognizer = sr.Recognizer()
+    recognizer.pause_threshold = 0.8   # stop listening 0.8 s after you stop speaking
+    recognizer.energy_threshold = 300  # mic sensitivity (auto-adjusted below)
+
+    print("\n" + "-" * 60)
+    print("  [MIC] MICROPHONE ACTIVE  -- Speak your command now...")
+    print("      (Say: 'turn on the lights', 'increase the volume', etc.)")
+    print("-" * 60)
+
+    try:
+        with sr.Microphone() as source:
+            # Auto-adjust for ambient noise (calibrates for 1 second)
+            print("  [Calibrating mic for background noise... stay quiet for 1 sec]")
+            recognizer.adjust_for_ambient_noise(source, duration=1)
+            print("  [OK] Ready! Speak now: ", end="", flush=True)
+
+            # Listen for speech (timeout=8 s to start, phrase_limit=5 s max)
+            audio = recognizer.listen(source, timeout=8, phrase_time_limit=5)
+
+        print()  # newline after "Speak now:"
+        print("  [Processing audio via Google Speech API...]")
+
+        # Transcribe using Google free tier
+        text = recognizer.recognize_google(audio)
+        print(f"  [OK] Heard: \"{text}\"")
+        return text
+
+    except sr.WaitTimeoutError:
+        print("\n  [!] No speech detected within 8 seconds. Please try again.")
+        return None
+    except sr.UnknownValueError:
+        print("\n  [!] Could not understand audio. Speak clearly and try again.")
+        return None
+    except sr.RequestError as e:
+        print(f"\n  [!] Google Speech API error (check internet): {e}")
+        print("      Tip: Use [t] text mode if you have no internet.")
+        return None
+    except OSError:
+        print("\n  [!] Microphone not found or access denied.")
+        print("      Check Windows microphone permissions:")
+        print("      Settings -> Privacy -> Microphone -> Allow apps to access microphone")
+        return None
+
 def print_banner():
     print("""
 ================================================================================
@@ -164,9 +223,12 @@ def run_interactive_cli():
 
     while True:
         print(f"\n[CURRENT CONFIG] Active Mode: {'Tier 0 (Shift-only)' if current_mode==0 else 'Tier 1 (16-LUT)' if current_mode==1 else 'Version A (Detour)'}")
+        voice_status = "[OK] Available" if VOICE_AVAILABLE else "[X] Not installed (pip install SpeechRecognition pyaudio)"
+        print(f"[VOICE STATUS  ] Microphone Input: {voice_status}")
         print("Options:")
         print("  [1-6] Run pre-stored demonstration sentence")
-        print("  [t]   Type custom sentence (Voice/Text Tokenizer)")
+        print("  [v]   [MIC] Voice Input  -- Speak a command into your laptop mic")
+        print("  [t]   [KEY] Text Input   -- Type a custom sentence manually")
         print("  [m]   Toggle Softmax Mode (0=Tier0, 1=Tier1, 2=VersionA)")
         print("  [b]   Run Live Side-by-Side Benchmark (Tier 0 vs. Version A)")
         print("  [q]   Quit")
@@ -184,6 +246,21 @@ def run_interactive_cli():
             print(f"\n[HARDWARE TELEMETRY STREAM @ 115200 BAUD]")
             print(f"[RESULT] Mode: {res['mode_name']:8s} | Sent: {idx} | Intent: {res['intent_id']} ({res['intent_name']}) | Softmax: {res['softmax_cycles']} cyc | Total: {res['total_cycles']} cyc")
             print(f"Hardware Latency @ 50 MHz: {res['latency_us']:.2f} us | Verification: {'PASS' if res['intent_id']==exp_intent else 'FAIL'}")
+
+        elif choice == "v":
+            # ── VOICE INPUT PATH ─────────────────────────────────────────────
+            spoken_text = capture_voice_command()
+            if spoken_text is None:
+                continue  # mic failed, loop back to menu
+            token_ids = tokenize_text(spoken_text)
+            print(f"\n>>> Transcribed Voice  : \"{spoken_text}\"")
+            print(f">>> Word→Token Mapping : {[(w, VOCAB.get(w, 1)) for w in re.findall(r'[a-z]+', spoken_text.lower())[:8]]}")
+            print(f">>> 8-Byte Hardware Bus: {token_ids}")
+
+            res = vfpga.run_inference(token_ids, mode=current_mode)
+            print(f"\n[HARDWARE TELEMETRY STREAM @ 115200 BAUD]")
+            print(f"[RESULT] Mode: {res['mode_name']:8s} | Sent: Voice | Intent: {res['intent_id']} ({res['intent_name']}) | Softmax: {res['softmax_cycles']} cyc | Total: {res['total_cycles']} cyc")
+            print(f"Hardware Latency @ 50 MHz: {res['latency_us']:.2f} us")
 
         elif choice == "t":
             user_text = input("\nEnter spoken / typed voice command: ").strip()
