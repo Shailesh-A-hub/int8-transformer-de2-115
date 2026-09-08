@@ -247,3 +247,19 @@ Recommended reading order for teammates:
 [ ] Task 5 (Board Programming): Connect DE2-115 via USB Blaster -> Program output_files/int8_transformer_de2_115.sof.
 [ ] Task 6 (UART Telemetry): Open PuTTY / Serial Monitor at 115,200 baud on COM port -> Capture UART output strings.
 ```
+
+---
+
+## 9. Future Scope & Research Roadmap
+
+1. **Direct On-Chip Audio Frontend (DE2-115 Wolfson WM8731 CODEC)**:
+   - Interface the board's onboard 24-bit 96 kHz Wolfson WM8731 Audio CODEC via Verilog I2S audio controller and I2C configuration master.
+   - Implement an on-chip hardware **MFCC (Mel-Frequency Cepstral Coefficients) filterbank** and FFT module to extract acoustic features from live microphone audio, providing a fully autonomous, hostless hardware voice edge assistant.
+2. **Multi-Head Self-Attention (MHSA) & Multi-Layer Depth**:
+   - Scale from single-head self-attention ($H=1$) to 4-head / 8-head parallel attention engines.
+   - Pipeline multiple transformer encoder blocks using the onboard 2 MB IS61WV102416 High-Speed Asynchronous SRAM for intermediate activation ping-pong buffers.
+3. **2D Systolic Array MAC Acceleration**:
+   - Replace the current sequential time-multiplexed MAC array with a 2D systolic array architecture to compute matrix dot-products concurrently, targeting sub-50 µs latency.
+4. **Sub-Byte (INT4 / FP8) Mixed-Precision Quantization**:
+   - Explore sub-byte weight quantization (e.g. INT4 weights with INT8 activations) to halve on-chip memory footprint while maintaining command classification fidelity.
+

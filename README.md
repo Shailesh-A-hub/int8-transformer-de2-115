@@ -193,3 +193,19 @@ To maintain absolute academic and engineering honesty during review:
 - **Accuracy**: Demonstrates **6/6 selected test vectors passed across all 3 Softmax variants (18/18 test cases)**, not the complete Fluent Speech Commands dataset.
 - **Division**: Verified 24-bit multi-cycle restoring divider (24 cycles/element, 192 divider cycles/row). Zero combinational division in RTL.
 - **FPGA Resources**: "Tier 0 eliminates the 256-entry exponential ROM lookup table and dedicated scaling multipliers from the exponentiation datapath (pure barrel shifter). Real FPGA Logic Elements (LEs) and registers are consumed by the FSM and sequential restoring divider. Post-fit LE/DSP/BRAM counts and Fmax are pending Quartus compilation."
+
+---
+
+## 🔮 Future Work & Roadmap
+
+1. **Direct On-Chip Audio Frontend (DE2-115 WM8731 Audio CODEC)**:
+   - Interface the board's onboard **Wolfson WM8731 Audio CODEC** via I2S / I2C controllers in Verilog.
+   - Implement an on-chip **MFCC (Mel-Frequency Cepstral Coefficients) / Spectrogram hardware engine** to convert live microphone audio directly into input tokens in real time on the FPGA, achieving a 100% standalone hardware voice assistant.
+2. **Multi-Head Self-Attention (MHSA) & Multi-Layer Depth**:
+   - Scale from single-head self-attention to **4-head / 8-head parallel attention engines**.
+   - Pipeline multiple transformer encoder blocks using onboard **2 MB IS61WV102416 High-Speed Asynchronous SRAM** for intermediate activation storage.
+3. **2D Systolic Array MAC Acceleration**:
+   - Upgrade the current sequential MAC array into a **2D systolic matrix multiplication architecture** to overlap token dot-products and achieve sub-50 µs total inference latency.
+4. **Sub-Byte (INT4 / FP8) Mixed-Precision Support**:
+   - Evaluate sub-byte quantization (e.g. INT4 weights with INT8 activations) to halve on-chip memory footprint while maintaining command classification fidelity.
+
