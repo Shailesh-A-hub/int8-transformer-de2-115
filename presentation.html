@@ -1,0 +1,1270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>INT8 Transformer Attention Accelerator — Interactive Deck</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@300;400;500;600;700;800&display=swap');
+    
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #070D18;
+      color: #E2E8F0;
+      overflow: hidden;
+      user-select: none;
+    }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    
+    /* Neon glow & border accents */
+    .glow-cyan { box-shadow: 0 0 25px -5px rgba(6, 182, 212, 0.25); }
+    .glow-emerald { box-shadow: 0 0 25px -5px rgba(16, 185, 129, 0.25); }
+    .glow-purple { box-shadow: 0 0 25px -5px rgba(168, 85, 247, 0.25); }
+    .border-glow-cyan { border-color: rgba(6, 182, 212, 0.4); }
+    
+    /* Slide transitions */
+    .slide {
+      opacity: 0;
+      visibility: hidden;
+      transform: scale(0.98);
+      transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.35s;
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .slide.active {
+      opacity: 1;
+      visibility: visible;
+      transform: scale(1);
+      z-index: 10;
+    }
+
+    /* 7-Segment Display LED Styling */
+    .seg7-digit {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      color: #EF4444;
+      text-shadow: 0 0 10px rgba(239, 68, 68, 0.8), 0 0 20px rgba(239, 68, 68, 0.4);
+      background: #110505;
+      border: 1px solid #3B0D0D;
+    }
+    .led-green-on {
+      background-color: #10B981;
+      box-shadow: 0 0 12px #10B981, 0 0 24px #10B981;
+    }
+    .led-red-on {
+      background-color: #EF4444;
+      box-shadow: 0 0 12px #EF4444, 0 0 24px #EF4444;
+    }
+    .led-off {
+      background-color: #1E293B;
+    }
+    
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0B132B; }
+    ::-webkit-scrollbar-thumb { background: #1E293B; border-radius: 3px; }
+  </style>
+</head>
+<body class="h-screen w-screen flex flex-col bg-[#070D18] text-slate-100">
+
+  <!-- Top Global Header -->
+  <header class="h-14 border-b border-slate-800/80 bg-[#0B1326]/90 backdrop-blur px-6 flex items-center justify-between z-50 flex-shrink-0">
+    <div class="flex items-center gap-3">
+      <div class="h-7 w-7 rounded-lg bg-gradient-to-tr from-cyan-500 to-emerald-400 flex items-center justify-center font-bold text-xs text-slate-950">
+        FPGA
+      </div>
+      <div>
+        <h1 class="text-sm font-semibold text-slate-200 tracking-wide">INT8 Transformer Attention Accelerator</h1>
+        <p class="text-[10px] text-cyan-400/80 mono">DE2-115 Cyclone IV EP4CE115F29C7 • 50 MHz</p>
+      </div>
+    </div>
+
+    <!-- Navigation & Quick Controls -->
+    <div class="flex items-center gap-3">
+      <div class="flex items-center bg-slate-900/90 border border-slate-800 rounded-lg p-1 text-xs mono">
+        <button onclick="prevSlide()" class="px-2.5 py-1 hover:bg-slate-800 text-slate-300 hover:text-cyan-300 rounded transition flex items-center gap-1" title="Previous Slide (← / PgUp)">
+          <span>‹</span> Prev
+        </button>
+        <span class="px-3 py-1 text-slate-400 border-x border-slate-800">
+          <span id="current-slide-num" class="text-cyan-400 font-bold">1</span> / <span id="total-slides-num">11</span>
+        </span>
+        <button onclick="nextSlide()" class="px-2.5 py-1 hover:bg-slate-800 text-slate-300 hover:text-cyan-300 rounded transition flex items-center gap-1" title="Next Slide (→ / Space / PgDn)">
+          Next <span>›</span>
+        </button>
+      </div>
+
+      <button onclick="toggleOverview()" class="p-2 bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 rounded-lg text-xs flex items-center gap-1.5 transition" title="Slide Grid Overview (G)">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+        <span class="hidden sm:inline">Slides</span>
+      </button>
+
+      <button onclick="toggleFullscreen()" class="p-2 bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 rounded-lg text-xs flex items-center gap-1.5 transition" title="Toggle Fullscreen (F)">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Presentation Slides Container -->
+  <main id="presentation-viewport" class="flex-1 relative overflow-hidden p-4 sm:p-6 lg:p-8">
+
+    <!-- ===================================================================== -->
+    <!-- SLIDE 1: Title Slide -->
+    <!-- ===================================================================== -->
+    <div class="slide active items-center justify-center text-center px-4" data-slide="1">
+      <div class="w-full max-w-5xl border border-cyan-500/40 rounded-2xl p-8 sm:p-14 bg-gradient-to-b from-[#0E1B33]/90 to-[#070D18]/90 glow-cyan relative overflow-hidden backdrop-blur">
+        <div class="absolute -top-24 -right-24 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute -bottom-24 -left-24 w-72 h-72 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-300 text-xs tracking-wider uppercase mb-6 font-medium">
+          <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+          Silicon-Verified FPGA Architecture
+        </div>
+
+        <h1 class="text-3xl sm:text-5xl lg:text-6xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-sky-200 to-emerald-300 tracking-tight leading-tight mb-6">
+          INT8 Transformer Attention Accelerator
+        </h1>
+
+        <div class="w-48 h-1 bg-gradient-to-r from-cyan-500 via-sky-400 to-emerald-400 mx-auto rounded-full mb-8"></div>
+
+        <p class="text-base sm:text-xl text-slate-300 font-medium italic mb-6">
+          Edge Spoken Intent Classification &bull; 3 Softmax Architectures &bull; 18/18 Tests Passed
+        </p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mx-auto mb-10 text-left">
+          <div class="p-4 rounded-xl border border-emerald-500/40 bg-emerald-500/10 flex items-start gap-3">
+            <div class="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 font-bold text-xs mt-0.5">0</div>
+            <div>
+              <div class="text-xs text-emerald-400 font-semibold uppercase tracking-wider">Tier 0 — Proposed</div>
+              <div class="text-sm text-slate-200 font-medium">Integer-Native Base-2 Shift (0 LUTs)</div>
+            </div>
+          </div>
+          <div class="p-4 rounded-xl border border-slate-700/60 bg-slate-800/40 flex items-start gap-3">
+            <div class="p-1.5 rounded-lg bg-slate-700/50 text-slate-300 font-bold text-xs mt-0.5">A</div>
+            <div>
+              <div class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Version A — Baseline</div>
+              <div class="text-sm text-slate-200 font-medium">Conventional Fixed-Point Detour</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="pt-6 border-t border-slate-800/80 flex flex-wrap items-center justify-between text-xs text-slate-400 mono gap-4">
+          <a href="https://github.com/Shailesh-A-hub/int8-transformer-de2-115" target="_blank" class="text-cyan-400 hover:underline flex items-center gap-1.5">
+            <span>github.com/Shailesh-A-hub/int8-transformer-de2-115</span>
+          </a>
+          <div class="flex items-center gap-3">
+            <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300">Pure Verilog-2001</span>
+            <span>&bull;</span>
+            <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300">ModelSim Verified</span>
+            <span>&bull;</span>
+            <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300">Quartus Prime Ready</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- SLIDE 2: Problem Statement -->
+    <!-- ===================================================================== -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="2">
+      <div class="mb-4">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-1">Introduction & Background</div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-100">Problem Statement</h2>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 items-stretch">
+        <!-- Challenge Left Card -->
+        <div class="lg:col-span-7 rounded-2xl border border-cyan-500/30 bg-[#0E1A33]/80 p-6 flex flex-col justify-between glow-cyan">
+          <div>
+            <div class="flex items-center gap-2 mb-4">
+              <span class="h-2.5 w-2.5 rounded-full bg-cyan-400"></span>
+              <h3 class="text-lg font-bold text-cyan-300">The Challenge: Transformers on Edge FPGAs</h3>
+            </div>
+            <ul class="space-y-3.5 text-sm text-slate-300">
+              <li class="flex items-start gap-2.5">
+                <span class="text-cyan-400 font-bold">&bull;</span>
+                <span>Transformers achieve state-of-the-art accuracy in NLP and speech intent classification tasks</span>
+              </li>
+              <li class="flex items-start gap-2.5">
+                <span class="text-cyan-400 font-bold">&bull;</span>
+                <span>Standard Softmax requires floating-point exponentials — <strong class="text-rose-400 font-semibold">NOT natively supported on Cyclone IV FPGA</strong></span>
+              </li>
+              <li class="flex items-start gap-2.5">
+                <span class="text-cyan-400 font-bold">&bull;</span>
+                <div>
+                  <span class="font-medium text-slate-200">Conventional workaround = Fixed-Point Detour:</span>
+                  <div class="p-2.5 mt-1.5 rounded-lg bg-slate-900/90 border border-slate-800 mono text-xs text-amber-300/90">
+                    INT8 Scores &rarr; Descale &rarr; 256-entry Exp LUT &rarr; Sum &rarr; Divide &rarr; Requantize &rarr; INT8 Output
+                  </div>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <div class="mt-4 pt-4 border-t border-slate-800/80">
+            <div class="text-xs uppercase text-slate-400 font-semibold mb-2 tracking-wider">This detour introduces:</div>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs mono">
+              <div class="p-2.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-300">
+                &bull; Extra latency (+16 cyc/row)
+              </div>
+              <div class="p-2.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-300">
+                &bull; Heavy memory (256-ROM)
+              </div>
+              <div class="p-2.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-300">
+                &bull; Multipliers for scaling
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Research Question & Specs Right Column -->
+        <div class="lg:col-span-5 flex flex-col gap-5 justify-between">
+          <!-- Research Question -->
+          <div class="rounded-2xl border border-purple-500/30 bg-purple-950/20 p-6 glow-purple flex-1 flex flex-col justify-center">
+            <div class="text-xs text-purple-400 font-semibold uppercase tracking-wider mono mb-2">Research Question</div>
+            <p class="text-base sm:text-lg font-medium text-purple-100 italic leading-snug">
+              "Can integer-native Softmax eliminate the fixed-point detour on a Cyclone IV FPGA, achieving lower latency while preserving 100% accuracy?"
+            </p>
+          </div>
+
+          <!-- Target System Specs -->
+          <div class="rounded-2xl border border-emerald-500/30 bg-emerald-950/20 p-6 glow-emerald">
+            <div class="text-xs text-emerald-400 font-semibold uppercase tracking-wider mono mb-3">Target System Specs</div>
+            <div class="grid grid-cols-2 gap-3 text-xs mono">
+              <div><span class="text-slate-400">FPGA:</span> <span class="text-slate-100 font-bold">Cyclone IV EP4CE115F29C7</span></div>
+              <div><span class="text-slate-400">Board:</span> <span class="text-slate-100 font-bold">Terasic DE2-115</span></div>
+              <div><span class="text-slate-400">Clock:</span> <span class="text-emerald-400 font-bold">50 MHz</span></div>
+              <div><span class="text-slate-400">Task:</span> <span class="text-slate-100 font-bold">Edge Intent Class.</span></div>
+              <div><span class="text-slate-400">Geometry:</span> <span class="text-cyan-300 font-bold">L = 8 tokens, D = 32</span></div>
+              <div><span class="text-slate-400">Classes:</span> <span class="text-slate-100 font-bold">6 smart home intents</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- SLIDE 3: System Architecture — 8-Stage Inference Pipeline -->
+    <!-- ===================================================================== -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="3">
+      <div class="mb-3">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-1">Architecture & Hardware Top Level</div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-100">System Architecture — 8-Stage Inference Pipeline</h2>
+      </div>
+
+      <!-- 8-Stage Horizontal Pipeline Flow -->
+      <div class="rounded-2xl border border-slate-800 bg-[#0C152B]/90 p-4 mb-4">
+        <div class="grid grid-cols-4 sm:grid-cols-8 gap-2 text-center text-xs">
+          <div class="p-2.5 rounded-xl border border-slate-700/60 bg-slate-900/80">
+            <div class="text-[10px] text-slate-400 mono font-bold">1</div>
+            <div class="font-bold text-slate-200 mt-0.5">Token Embed</div>
+          </div>
+          <div class="p-2.5 rounded-xl border border-slate-700/60 bg-slate-900/80">
+            <div class="text-[10px] text-slate-400 mono font-bold">2</div>
+            <div class="font-bold text-slate-200 mt-0.5">Q/K/V Project</div>
+          </div>
+          <div class="p-2.5 rounded-xl border border-slate-700/60 bg-slate-900/80">
+            <div class="text-[10px] text-slate-400 mono font-bold">3</div>
+            <div class="font-bold text-slate-200 mt-0.5">Attn Scores</div>
+          </div>
+          <div class="p-2.5 rounded-xl border-2 border-emerald-400 bg-emerald-500/15 glow-emerald">
+            <div class="text-[10px] text-emerald-300 mono font-bold">4</div>
+            <div class="font-bold text-emerald-200 mt-0.5">Softmax</div>
+            <div class="text-[9px] text-emerald-400 mono mt-0.5">(3 modes)</div>
+          </div>
+          <div class="p-2.5 rounded-xl border border-slate-700/60 bg-slate-900/80">
+            <div class="text-[10px] text-slate-400 mono font-bold">5</div>
+            <div class="font-bold text-slate-200 mt-0.5">Context Aggr.</div>
+          </div>
+          <div class="p-2.5 rounded-xl border border-slate-700/60 bg-slate-900/80">
+            <div class="text-[10px] text-slate-400 mono font-bold">6</div>
+            <div class="font-bold text-slate-200 mt-0.5">Mean Pool</div>
+          </div>
+          <div class="p-2.5 rounded-xl border border-slate-700/60 bg-slate-900/80">
+            <div class="text-[10px] text-slate-400 mono font-bold">7</div>
+            <div class="font-bold text-slate-200 mt-0.5">Classify Logits</div>
+          </div>
+          <div class="p-2.5 rounded-xl border border-slate-700/60 bg-slate-900/80">
+            <div class="text-[10px] text-slate-400 mono font-bold">8</div>
+            <div class="font-bold text-slate-200 mt-0.5">Argmax Intent</div>
+          </div>
+        </div>
+        <div class="text-center text-[11px] text-emerald-400 font-semibold tracking-wider mt-2.5 mono uppercase">
+          &uarr; Stage 4: Your Core Research Contribution (Integer-Native Softmax) &uarr;
+        </div>
+      </div>
+
+      <!-- Bottom 3 Columns: Inputs, RTL Modules, Outputs -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1">
+        <!-- Inputs Card -->
+        <div class="rounded-xl border border-cyan-500/30 bg-[#0E1A33]/70 p-4 flex flex-col justify-between text-xs">
+          <div>
+            <h3 class="font-bold text-cyan-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-cyan-400"></span> Inputs (Board Switches)
+            </h3>
+            <div class="space-y-1.5 mono text-slate-300">
+              <div><strong class="text-slate-100">SW[4:2]</strong> &bull; Sentence selector (0-5)</div>
+              <div><strong class="text-slate-100">SW[1:0]</strong> &bull; Softmax mode (0,1,A)</div>
+              <div><strong class="text-slate-100">KEY[1]</strong> &bull; Trigger inference</div>
+              <div><strong class="text-slate-100">KEY[0]</strong> &bull; System reset</div>
+            </div>
+            <div class="mt-3 pt-2 border-t border-slate-800 text-slate-400 mono text-[11px] space-y-0.5">
+              <div>0 &rarr; Turn on the lights</div>
+              <div>1 &rarr; Turn off the lights</div>
+              <div>2 &rarr; Increase the volume</div>
+              <div>3 &rarr; Decrease the volume</div>
+              <div>4 &rarr; Turn on the heat</div>
+              <div>5 &rarr; Turn off the heat</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RTL Modules Card -->
+        <div class="rounded-xl border border-purple-500/30 bg-[#140F2D]/70 p-4 text-xs">
+          <h3 class="font-bold text-purple-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-purple-400"></span> RTL Modules (10 .v files)
+          </h3>
+          <div class="space-y-1 mono text-[11px] text-slate-300">
+            <div class="flex justify-between"><span class="text-purple-300 font-semibold">de2_115_top.v</span> <span class="text-slate-400">Top-level entity</span></div>
+            <div class="flex justify-between"><span class="text-purple-300 font-semibold">attention_engine.v</span> <span class="text-slate-400">11-stage FSM</span></div>
+            <div class="flex justify-between"><span class="text-purple-300 font-semibold">weight_roms.v</span> <span class="text-slate-400">Self-contained ROMs</span></div>
+            <div class="flex justify-between"><span class="text-purple-300 font-semibold">int8_mac_array.v</span> <span class="text-slate-400">8-lane INT8 MAC</span></div>
+            <div class="flex justify-between"><span class="text-purple-300 font-semibold">restoring_divider.v</span> <span class="text-slate-400">24-bit divider</span></div>
+            <div class="flex justify-between"><span class="text-purple-300 font-semibold">softmax_tier0.v</span> <span class="text-slate-400">Shift-only</span></div>
+            <div class="flex justify-between"><span class="text-purple-300 font-semibold">softmax_tier1.v</span> <span class="text-slate-400">16-LUT</span></div>
+            <div class="flex justify-between"><span class="text-purple-300 font-semibold">softmax_detour_vA.v</span> <span class="text-slate-400">Baseline</span></div>
+            <div class="flex justify-between"><span class="text-purple-300 font-semibold">cycle_counter.v</span> <span class="text-slate-400">HW timing</span></div>
+            <div class="flex justify-between"><span class="text-purple-300 font-semibold">uart_tx.v</span> <span class="text-slate-400">Serial output</span></div>
+          </div>
+        </div>
+
+        <!-- Outputs Card -->
+        <div class="rounded-xl border border-emerald-500/30 bg-[#0B211C]/70 p-4 text-xs">
+          <h3 class="font-bold text-emerald-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-400"></span> Outputs (7-seg + LEDs)
+          </h3>
+          <div class="space-y-1.5 mono text-slate-300">
+            <div><strong class="text-emerald-400">HEX0:</strong> Intent class (0-5)</div>
+            <div><strong class="text-emerald-400">HEX1:</strong> Softmax mode (0,1,A)</div>
+            <div><strong class="text-emerald-400">HEX2:</strong> Sentence ID (0-5)</div>
+            <div><strong class="text-emerald-400">HEX3:</strong> Separator dash</div>
+            <div><strong class="text-emerald-400">HEX7-HEX4:</strong> Cycle count (hex)</div>
+          </div>
+          <div class="mt-3 pt-2 border-t border-slate-800 text-slate-400 mono text-[11px] space-y-0.5">
+            <div><strong>LEDR[17:0]:</strong> Mirror all switches</div>
+            <div><strong>LEDG[0]:</strong> Engine busy</div>
+            <div><strong>LEDG[1]:</strong> Inference done</div>
+            <div><strong>LEDG[2]:</strong> Heartbeat (1.5 Hz)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- SLIDE 4: 3 Softmax Architectures Compared -->
+    <!-- ===================================================================== -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="4">
+      <div class="mb-3">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-1">Comparative Architectural Analysis</div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-100">3 Softmax Architectures Compared</h2>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 flex-1 items-stretch">
+        <!-- Version A Card -->
+        <div class="rounded-2xl border border-rose-500/40 bg-[#1F0E17]/80 p-5 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <span class="px-2.5 py-0.5 rounded bg-rose-500/20 text-rose-300 font-bold text-xs mono">Version A</span>
+              <span class="text-xs text-slate-400">Conventional Baseline</span>
+            </div>
+            <h3 class="text-base font-bold text-rose-200 mb-3">Conventional Fixed-Point Detour</h3>
+            <ol class="space-y-1.5 text-xs text-slate-300 mono">
+              <li>1. Find Max (8 cycles)</li>
+              <li>2. Descale: z = S - max (8 cycles)</li>
+              <li>3. Exp LUT: 256-entry ROM (8 cycles)</li>
+              <li>4. Restoring Divider x8 (192 cycles)</li>
+              <li>5. Requantize to INT8 (8 cycles)</li>
+            </ol>
+          </div>
+
+          <div class="mt-4 pt-3 border-t border-rose-500/20">
+            <div class="space-y-1 mono text-xs mb-3">
+              <div class="text-rose-300 font-bold">Softmax Cycles: 2,008</div>
+              <div class="text-slate-200">Total Cycles: 5,688</div>
+              <div class="text-slate-400">Latency @50MHz: 113.76 &mu;s</div>
+            </div>
+            <div class="text-[11px] text-slate-400 space-y-0.5">
+              <div>&bull; 256-entry exponential ROM</div>
+              <div>&bull; Descale + Requant stages</div>
+              <div>&bull; Extra pipeline overhead</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tier 0 Card -->
+        <div class="rounded-2xl border-2 border-emerald-400 bg-[#0A261C]/90 p-5 flex flex-col justify-between glow-emerald">
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <span class="px-2.5 py-0.5 rounded bg-emerald-500/30 text-emerald-300 font-bold text-xs mono">Tier 0</span>
+              <span class="text-xs text-emerald-300 font-semibold uppercase tracking-wider">Proposed</span>
+            </div>
+            <h3 class="text-base font-bold text-emerald-200 mb-3">Integer-Native Base-2 Shift Only</h3>
+            <ol class="space-y-1.5 text-xs text-slate-200 mono">
+              <li>1. Find Max (8 cycles)</li>
+              <li>2. Shift amount: t = (-z) &times; 23</li>
+              <li>3. Barrel shift: w = 32768 &gt;&gt; t</li>
+              <li class="text-emerald-300 font-semibold">&nbsp;&nbsp;&nbsp;(No Exp ROM needed!)</li>
+              <li>4. Restoring Divider x8 (192 cycles)</li>
+            </ol>
+          </div>
+
+          <div class="mt-4 pt-3 border-t border-emerald-500/30">
+            <div class="space-y-1 mono text-xs mb-3">
+              <div class="text-emerald-400 font-bold">Softmax Cycles: 1,880 (-128)</div>
+              <div class="text-slate-100 font-bold">Total Cycles: 5,560</div>
+              <div class="text-emerald-300">Latency @50MHz: 111.20 &mu;s</div>
+            </div>
+            <div class="text-[11px] text-emerald-200/90 space-y-0.5">
+              <div>&bull; <strong class="text-emerald-300">ZERO</strong> exponential ROM</div>
+              <div>&bull; <strong class="text-emerald-300">ZERO</strong> descale / requant stages</div>
+              <div>&bull; Pure barrel shifter logic</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tier 1 Card -->
+        <div class="rounded-2xl border border-cyan-500/40 bg-[#0E1F36]/80 p-5 flex flex-col justify-between glow-cyan">
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <span class="px-2.5 py-0.5 rounded bg-cyan-500/30 text-cyan-300 font-bold text-xs mono">Tier 1</span>
+              <span class="text-xs text-cyan-300 font-semibold uppercase tracking-wider">Proposed</span>
+            </div>
+            <h3 class="text-base font-bold text-cyan-200 mb-3">Base-2 Shift + 16-Entry LUT</h3>
+            <ol class="space-y-1.5 text-xs text-slate-200 mono">
+              <li>1. Find Max (8 cycles)</li>
+              <li>2. Q4.4 decompose: q = t&gt;&gt;4, f = t&amp;F</li>
+              <li>3. LUT[f]: reads 16-entry frac table</li>
+              <li class="text-cyan-300 font-semibold">&nbsp;&nbsp;&nbsp;w = LUT[f] &gt;&gt; q</li>
+              <li>4. Restoring Divider x8 (192 cycles)</li>
+            </ol>
+          </div>
+
+          <div class="mt-4 pt-3 border-t border-cyan-500/30">
+            <div class="space-y-1 mono text-xs mb-3">
+              <div class="text-cyan-400 font-bold">Softmax Cycles: 1,880 (-128)</div>
+              <div class="text-slate-100 font-bold">Total Cycles: 5,560</div>
+              <div class="text-cyan-300">Latency @50MHz: 111.20 &mu;s</div>
+            </div>
+            <div class="text-[11px] text-cyan-200/90 space-y-0.5">
+              <div>&bull; Only 16-word fractional LUT</div>
+              <div>&bull; No descale / requant stages</div>
+              <div>&bull; <strong class="text-cyan-300">Highest numerical precision</strong></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- SLIDE 5: Simulation Results — ModelSim 10.5b -->
+    <!-- ===================================================================== -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="5">
+      <div class="mb-3">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-1">RTL Verification & Statistical Metrics</div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-100">Simulation Results — ModelSim 10.5b</h2>
+      </div>
+
+      <!-- Banner Success -->
+      <div class="rounded-xl border border-emerald-500/50 bg-emerald-500/10 p-3 text-center text-emerald-300 font-bold text-sm tracking-wider mono mb-4 glow-emerald">
+        18 / 18 Tests PASSED &bull; 0 Errors &bull; 0 Warnings &bull; 100% Accuracy
+      </div>
+
+      <!-- Table 1: Cycles -->
+      <div class="rounded-xl border border-slate-800 bg-[#0C152B]/90 overflow-hidden mb-4">
+        <table class="w-full text-left text-xs mono">
+          <thead class="bg-slate-900/90 text-slate-400 border-b border-slate-800">
+            <tr>
+              <th class="p-2.5">Architecture</th>
+              <th class="p-2.5">Softmax Cycles</th>
+              <th class="p-2.5">Total Cycles</th>
+              <th class="p-2.5">Latency @50MHz</th>
+              <th class="p-2.5 text-right">Cycle Saving</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800 text-slate-200">
+            <tr>
+              <td class="p-2.5 font-semibold text-rose-300">Version A (Baseline)</td>
+              <td class="p-2.5">2,008 cycles</td>
+              <td class="p-2.5">5,688 cycles</td>
+              <td class="p-2.5">113.76 &mu;s</td>
+              <td class="p-2.5 text-right text-slate-400">--</td>
+            </tr>
+            <tr class="bg-emerald-500/5">
+              <td class="p-2.5 font-semibold text-emerald-300">Tier 0 -- Shift Only</td>
+              <td class="p-2.5 font-bold text-emerald-400">1,880 cycles</td>
+              <td class="p-2.5 font-bold text-emerald-400">5,560 cycles</td>
+              <td class="p-2.5">111.20 &mu;s</td>
+              <td class="p-2.5 text-right font-bold text-emerald-400">-128 cycles</td>
+            </tr>
+            <tr class="bg-cyan-500/5">
+              <td class="p-2.5 font-semibold text-cyan-300">Tier 1 -- 16-LUT</td>
+              <td class="p-2.5 font-bold text-cyan-400">1,880 cycles</td>
+              <td class="p-2.5 font-bold text-cyan-400">5,560 cycles</td>
+              <td class="p-2.5">111.20 &mu;s</td>
+              <td class="p-2.5 text-right font-bold text-cyan-400">-128 cycles</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Table 2: Accuracy -->
+      <div class="rounded-xl border border-slate-800 bg-[#0C152B]/90 overflow-hidden mb-2">
+        <div class="p-2 bg-slate-900/90 border-b border-slate-800 text-xs font-semibold text-slate-300">
+          Numerical Accuracy vs FP64 Baseline (1,000 synthetic vectors)
+        </div>
+        <table class="w-full text-left text-xs mono">
+          <thead class="bg-slate-900/60 text-slate-400 border-b border-slate-800 text-[11px]">
+            <tr>
+              <th class="p-2">Variant</th>
+              <th class="p-2">Mean Abs Error</th>
+              <th class="p-2">Max Error</th>
+              <th class="p-2">KL Divergence</th>
+              <th class="p-2 text-right">Rank Inversions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800 text-slate-200">
+            <tr>
+              <td class="p-2 font-semibold text-rose-300">Version A</td>
+              <td class="p-2">0.100967</td>
+              <td class="p-2">0.401563</td>
+              <td class="p-2">0.532291</td>
+              <td class="p-2 text-right font-bold text-emerald-400">0.00%</td>
+            </tr>
+            <tr>
+              <td class="p-2 font-semibold text-emerald-300">Tier 0</td>
+              <td class="p-2">0.002312</td>
+              <td class="p-2">0.009236</td>
+              <td class="p-2">0.016769</td>
+              <td class="p-2 text-right font-bold text-emerald-400">0.00%</td>
+            </tr>
+            <tr class="bg-cyan-500/10">
+              <td class="p-2 font-semibold text-cyan-300">Tier 1 (*)</td>
+              <td class="p-2 font-bold text-cyan-400">0.000246</td>
+              <td class="p-2 font-bold text-cyan-400">0.000979</td>
+              <td class="p-2 font-bold text-cyan-400">0.014876</td>
+              <td class="p-2 text-right font-bold text-emerald-400">0.00%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="text-center text-xs text-cyan-300 italic mono">
+        (*) Tier 1 = 400x lower error than Version A &bull; 10x lower than Tier 0 &bull; Same latency as Tier 0
+      </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- SLIDE 6: Live FPGA Demo — DE2-115 Board -->
+    <!-- ===================================================================== -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="6">
+      <div class="mb-3">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-1">Hardware Validation on Real Silicon</div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-100">Live FPGA Demo — DE2-115 Board</h2>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1">
+        <!-- Switch table Left -->
+        <div class="lg:col-span-7 rounded-2xl border border-cyan-500/30 bg-[#0E1A33]/80 p-4 flex flex-col justify-between">
+          <div>
+            <div class="text-xs font-bold text-cyan-300 uppercase tracking-wider mb-2">Switch Settings & Expected Outputs</div>
+            <table class="w-full text-left text-xs mono">
+              <thead class="bg-slate-900/90 text-slate-400 border-b border-slate-800">
+                <tr>
+                  <th class="p-2">Sentence</th>
+                  <th class="p-2">SW4 SW3 SW2</th>
+                  <th class="p-2 text-center">HEX2</th>
+                  <th class="p-2 text-center">HEX0</th>
+                  <th class="p-2 text-right">LEDR[4:0]</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800 text-slate-200">
+                <tr>
+                  <td class="p-2 text-emerald-300">Turn on lights</td>
+                  <td class="p-2">D D D</td>
+                  <td class="p-2 text-center font-bold text-cyan-300">0</td>
+                  <td class="p-2 text-center font-bold text-emerald-400">0</td>
+                  <td class="p-2 text-right text-slate-400">00000</td>
+                </tr>
+                <tr>
+                  <td class="p-2 text-emerald-300">Turn off lights</td>
+                  <td class="p-2">D D U</td>
+                  <td class="p-2 text-center font-bold text-cyan-300">1</td>
+                  <td class="p-2 text-center font-bold text-emerald-400">1</td>
+                  <td class="p-2 text-right text-slate-400">00100</td>
+                </tr>
+                <tr>
+                  <td class="p-2 text-emerald-300">Increase volume</td>
+                  <td class="p-2">D U D</td>
+                  <td class="p-2 text-center font-bold text-cyan-300">2</td>
+                  <td class="p-2 text-center font-bold text-emerald-400">2</td>
+                  <td class="p-2 text-right text-slate-400">01000</td>
+                </tr>
+                <tr>
+                  <td class="p-2 text-emerald-300">Decrease volume</td>
+                  <td class="p-2">D U U</td>
+                  <td class="p-2 text-center font-bold text-cyan-300">3</td>
+                  <td class="p-2 text-center font-bold text-emerald-400">3</td>
+                  <td class="p-2 text-right text-slate-400">01100</td>
+                </tr>
+                <tr>
+                  <td class="p-2 text-emerald-300">Turn on heat</td>
+                  <td class="p-2">U D D</td>
+                  <td class="p-2 text-center font-bold text-cyan-300">4</td>
+                  <td class="p-2 text-center font-bold text-emerald-400">4</td>
+                  <td class="p-2 text-right text-slate-400">10000</td>
+                </tr>
+                <tr>
+                  <td class="p-2 text-emerald-300">Turn off heat</td>
+                  <td class="p-2">U D U</td>
+                  <td class="p-2 text-center font-bold text-cyan-300">5</td>
+                  <td class="p-2 text-center font-bold text-emerald-400">5</td>
+                  <td class="p-2 text-right text-slate-400">10100</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="mt-2 text-[11px] text-cyan-300 font-semibold mono">
+            U=Up, D=Down &bull; HEX0 must always equal HEX2 ==&gt; 100% classification accuracy
+          </div>
+        </div>
+
+        <!-- Right Column: Green LED + Cycle Count Demo -->
+        <div class="lg:col-span-5 flex flex-col gap-4 justify-between">
+          <!-- Green LED Status -->
+          <div class="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-4 text-xs mono space-y-1.5">
+            <div class="text-xs font-bold text-emerald-300 uppercase tracking-wider mb-2">Green LED Status</div>
+            <div><strong>LEDG[0]:</strong> Engine BUSY (brief flicker ~111&mu;s)</div>
+            <div><strong>LEDG[1]:</strong> DONE -- stays ON after inference</div>
+            <div><strong>LEDG[2]:</strong> Heartbeat -- blinks 1.5x per sec (Proves bitstream running)</div>
+          </div>
+
+          <!-- Cycle Count Demo -->
+          <div class="rounded-xl border border-amber-500/40 bg-amber-950/20 p-4 text-xs mono glow-purple">
+            <div class="text-xs font-bold text-amber-300 uppercase tracking-wider mb-2">Cycle Count Demo (Research Proof)</div>
+            <div class="text-slate-300 mb-2">Fix sentence 0 (all SW4:2=DOWN), then:</div>
+            <div class="space-y-1 text-slate-200">
+              <div>SW1=D SW0=D &rarr; HEX1='0' Tier 0 &bull; <strong class="text-emerald-400">HEX7-4: 1 5 b 8 (5560 cyc)</strong></div>
+              <div>SW1=D SW0=U &rarr; HEX1='1' Tier 1 &bull; <strong class="text-emerald-400">HEX7-4: 1 5 b 8 (5560 cyc)</strong></div>
+              <div>SW1=U SW0=D &rarr; HEX1='A' Ver. A &bull; <strong class="text-rose-400">HEX7-4: 1 6 3 8 (5688 cyc)</strong></div>
+            </div>
+            <div class="mt-2 pt-2 border-t border-amber-500/30 text-amber-300 font-bold">
+              LIVE PROOF: Exactly 128 more cycles on Ver.A!
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- SLIDE 7: Key Findings & Research Contributions -->
+    <!-- ===================================================================== -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="7">
+      <div class="mb-3">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-1">Impact & Takeaways</div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-100">Key Findings & Research Contributions</h2>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 flex-1">
+        <!-- Finding 1 -->
+        <div class="rounded-2xl border border-emerald-500/40 bg-[#0B211C]/80 p-5 flex flex-col justify-between">
+          <div>
+            <div class="h-7 w-7 rounded-lg bg-emerald-500/20 text-emerald-400 font-bold text-sm flex items-center justify-center mono mb-3">1</div>
+            <h3 class="text-base font-bold text-emerald-200 mb-2">128-Cycle Softmax Speedup on Silicon</h3>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              Integer-native Tier 0 & Tier 1 each save 128 clock cycles per inference vs conventional Version A. Proven LIVE on DE2-115 7-seg cycle counter.
+            </p>
+          </div>
+          <div class="mt-3 text-[11px] text-emerald-400 mono font-semibold">111.20 &mu;s vs 113.76 &mu;s</div>
+        </div>
+
+        <!-- Finding 2 -->
+        <div class="rounded-2xl border border-cyan-500/40 bg-[#0E1F36]/80 p-5 flex flex-col justify-between">
+          <div>
+            <div class="h-7 w-7 rounded-lg bg-cyan-500/20 text-cyan-400 font-bold text-sm flex items-center justify-center mono mb-3">2</div>
+            <h3 class="text-base font-bold text-cyan-200 mb-2">Zero Exponential ROM in Tier 0</h3>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              Tier 0 eliminates the 256-entry exponential LUT. A pure arithmetic barrel shift replaces the ROM.
+            </p>
+          </div>
+          <div class="mt-3 text-[11px] text-cyan-300 mono font-semibold">Math: e^z &asymp; 2^(z &times; log2(e))</div>
+        </div>
+
+        <!-- Finding 3 -->
+        <div class="rounded-2xl border border-purple-500/40 bg-[#160E2E]/80 p-5 flex flex-col justify-between">
+          <div>
+            <div class="h-7 w-7 rounded-lg bg-purple-500/20 text-purple-400 font-bold text-sm flex items-center justify-center mono mb-3">3</div>
+            <h3 class="text-base font-bold text-purple-200 mb-2">Tier 1: 400x Higher Precision Than Ver.A</h3>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              16-entry fractional LUT adds sub-shift correction. MAE = 0.000246 vs Version A MAE = 0.100967.
+            </p>
+          </div>
+          <div class="mt-3 text-[11px] text-purple-300 mono font-semibold">Same 1,880-cycle latency (Free precision)</div>
+        </div>
+
+        <!-- Finding 4 -->
+        <div class="rounded-2xl border border-amber-500/40 bg-[#21190B]/80 p-5 flex flex-col justify-between">
+          <div>
+            <div class="h-7 w-7 rounded-lg bg-amber-500/20 text-amber-400 font-bold text-sm flex items-center justify-center mono mb-3">4</div>
+            <h3 class="text-base font-bold text-amber-200 mb-2">100% Accuracy Across All 6 Intents</h3>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              18/18 ModelSim tests passed across all 3 variants. All 6 smart home commands classified correctly: lights, volume, and heat on/off.
+            </p>
+          </div>
+          <div class="mt-3 text-[11px] text-amber-300 mono font-semibold">0.00% Rank Inversions</div>
+        </div>
+
+        <!-- Finding 5 -->
+        <div class="rounded-2xl border border-sky-500/40 bg-[#0C1E38]/80 p-5 flex flex-col justify-between sm:col-span-2 lg:col-span-2">
+          <div>
+            <div class="h-7 w-7 rounded-lg bg-sky-500/20 text-sky-400 font-bold text-sm flex items-center justify-center mono mb-3">5</div>
+            <h3 class="text-base font-bold text-sky-200 mb-2">Pure Verilog-2001 &bull; Synthesis Ready</h3>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              Full codebase in Verilog-2001 (no SystemVerilog). Weights baked into ROMs — no external .hex needed. Compiles cleanly in Quartus Prime 18.1 / 24.1: 0 errors.
+            </p>
+          </div>
+          <div class="mt-3 text-[11px] text-sky-300 mono font-semibold">20,635 LEs (18%) &bull; 8 DSP Elements &bull; Zero External RAM Dependencies</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- SLIDE 8: Conclusion -->
+    <!-- ===================================================================== -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="8">
+      <div class="mb-3">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-1">Summary & Deliverables</div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-100">Conclusion</h2>
+      </div>
+
+      <!-- Quote Box -->
+      <div class="rounded-2xl border border-cyan-500/40 bg-gradient-to-r from-cyan-950/40 via-[#0B1A33]/80 to-emerald-950/40 p-5 text-center mb-5 glow-cyan">
+        <p class="text-base sm:text-xl font-bold text-slate-100 italic">
+          "Integer-native Softmax eliminates the fixed-point detour, saving 128 cycles per inference on a Cyclone IV FPGA while preserving 100% classification accuracy."
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 items-stretch">
+        <!-- What We Achieved Left -->
+        <div class="lg:col-span-7 rounded-2xl border border-emerald-500/30 bg-[#0B211C]/80 p-5 flex flex-col justify-between">
+          <div>
+            <div class="text-xs font-bold text-emerald-300 uppercase tracking-wider mb-3">What We Achieved</div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs mono text-slate-200">
+              <div class="flex items-start gap-1.5"><span class="text-emerald-400">[OK]</span> <span>3 Softmax architectures in pure Verilog-2001</span></div>
+              <div class="flex items-start gap-1.5"><span class="text-emerald-400">[OK]</span> <span>INT8 pipeline: Embed &rarr; QKV &rarr; Attn &rarr; Pool &rarr; Classify</span></div>
+              <div class="flex items-start gap-1.5"><span class="text-emerald-400">[OK]</span> <span>18/18 end-to-end tests passed in ModelSim</span></div>
+              <div class="flex items-start gap-1.5"><span class="text-emerald-400">[OK]</span> <span>128-cycle savings proven (Tier 0 & 1 vs Ver A)</span></div>
+              <div class="flex items-start gap-1.5"><span class="text-emerald-400">[OK]</span> <span>Tier 1: 400x lower error than Version A</span></div>
+              <div class="flex items-start gap-1.5"><span class="text-emerald-400">[OK]</span> <span>Weights baked in -- no external file dependency</span></div>
+              <div class="flex items-start gap-1.5"><span class="text-emerald-400">[OK]</span> <span>Deployed on Terasic DE2-115 at 50 MHz</span></div>
+              <div class="flex items-start gap-1.5"><span class="text-emerald-400">[OK]</span> <span>6 smart home intent classes classified correctly</span></div>
+            </div>
+          </div>
+          <div class="mt-4 pt-3 border-t border-emerald-500/20 text-center text-emerald-400 font-bold text-sm tracking-wider">
+            Thank You
+          </div>
+        </div>
+
+        <!-- Project Info Right -->
+        <div class="lg:col-span-5 rounded-2xl border border-slate-800 bg-[#0C152B]/80 p-5 flex flex-col justify-between text-xs mono">
+          <div class="space-y-3">
+            <div class="text-xs font-bold text-cyan-300 uppercase tracking-wider">Project Info</div>
+            <div>
+              <div class="text-slate-400">Hardware:</div>
+              <div class="text-slate-200 font-bold">Cyclone IV EP4CE115F29C7</div>
+              <div class="text-slate-300">Terasic DE2-115 Board</div>
+            </div>
+            <div>
+              <div class="text-slate-400">Language:</div>
+              <div class="text-cyan-300 font-bold">Pure Verilog-2001</div>
+            </div>
+            <div>
+              <div class="text-slate-400">Simulation / Synthesis:</div>
+              <div class="text-slate-200">ModelSim ASE 10.5b &bull; Quartus Prime 18.1 / 24.1</div>
+            </div>
+          </div>
+
+          <div class="mt-4 pt-3 border-t border-slate-800">
+            <div class="text-slate-400">Repository:</div>
+            <a href="https://github.com/Shailesh-A-hub/int8-transformer-de2-115" target="_blank" class="text-cyan-400 hover:underline break-all">
+              github.com/Shailesh-A-hub/int8-transformer-de2-115
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- SLIDE 9: Quick Reference — Board Demo Cheat Sheet -->
+    <!-- ===================================================================== -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="9">
+      <div class="mb-3">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-1">Demonstration & Evaluation Reference</div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-100">Quick Reference — Board Demo Cheat Sheet</h2>
+      </div>
+
+      <div class="rounded-xl border border-cyan-500/30 bg-[#0C152B]/90 overflow-hidden mb-3">
+        <table class="w-full text-left text-xs mono">
+          <thead class="bg-slate-900 text-slate-400 border-b border-slate-800">
+            <tr>
+              <th class="p-2">Command</th>
+              <th class="p-2 text-center">SW4</th>
+              <th class="p-2 text-center">SW3</th>
+              <th class="p-2 text-center">SW2</th>
+              <th class="p-2">Red LEDs (LEDR4-0)</th>
+              <th class="p-2 text-center">HEX2</th>
+              <th class="p-2 text-center">HEX0</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800 text-slate-200">
+            <tr>
+              <td class="p-2 text-emerald-300 font-bold">Lights ON</td>
+              <td class="p-2 text-center">&darr;</td>
+              <td class="p-2 text-center">&darr;</td>
+              <td class="p-2 text-center">&darr;</td>
+              <td class="p-2 text-slate-400">OFF OFF OFF OFF OFF</td>
+              <td class="p-2 text-center font-bold text-cyan-300">0</td>
+              <td class="p-2 text-center font-bold text-emerald-400">0</td>
+            </tr>
+            <tr>
+              <td class="p-2 text-emerald-300 font-bold">Lights OFF</td>
+              <td class="p-2 text-center">&darr;</td>
+              <td class="p-2 text-center">&darr;</td>
+              <td class="p-2 text-center">&uarr;</td>
+              <td class="p-2 text-slate-400">OFF OFF ON OFF OFF</td>
+              <td class="p-2 text-center font-bold text-cyan-300">1</td>
+              <td class="p-2 text-center font-bold text-emerald-400">1</td>
+            </tr>
+            <tr>
+              <td class="p-2 text-emerald-300 font-bold">Vol UP</td>
+              <td class="p-2 text-center">&darr;</td>
+              <td class="p-2 text-center">&uarr;</td>
+              <td class="p-2 text-center">&darr;</td>
+              <td class="p-2 text-slate-400">OFF ON OFF OFF OFF</td>
+              <td class="p-2 text-center font-bold text-cyan-300">2</td>
+              <td class="p-2 text-center font-bold text-emerald-400">2</td>
+            </tr>
+            <tr>
+              <td class="p-2 text-emerald-300 font-bold">Vol DOWN</td>
+              <td class="p-2 text-center">&darr;</td>
+              <td class="p-2 text-center">&uarr;</td>
+              <td class="p-2 text-center">&uarr;</td>
+              <td class="p-2 text-slate-400">OFF ON ON OFF OFF</td>
+              <td class="p-2 text-center font-bold text-cyan-300">3</td>
+              <td class="p-2 text-center font-bold text-emerald-400">3</td>
+            </tr>
+            <tr>
+              <td class="p-2 text-emerald-300 font-bold">Heat ON</td>
+              <td class="p-2 text-center">&uarr;</td>
+              <td class="p-2 text-center">&darr;</td>
+              <td class="p-2 text-center">&darr;</td>
+              <td class="p-2 text-slate-400">ON OFF OFF OFF OFF</td>
+              <td class="p-2 text-center font-bold text-cyan-300">4</td>
+              <td class="p-2 text-center font-bold text-emerald-400">4</td>
+            </tr>
+            <tr>
+              <td class="p-2 text-emerald-300 font-bold">Heat OFF</td>
+              <td class="p-2 text-center">&uarr;</td>
+              <td class="p-2 text-center">&darr;</td>
+              <td class="p-2 text-center">&uarr;</td>
+              <td class="p-2 text-slate-400">ON OFF ON OFF OFF</td>
+              <td class="p-2 text-center font-bold text-cyan-300">5</td>
+              <td class="p-2 text-center font-bold text-emerald-400">5</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Mode & Status Cards -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs mono">
+        <div class="p-3 rounded-xl border border-slate-800 bg-[#0E1A33]/70 space-y-1">
+          <div class="text-cyan-400 font-bold">MODE switches:</div>
+          <div>&bull; SW1=&darr; SW0=&darr; &rarr; <strong>HEX1 = 0</strong>, cycles = <strong>15b8</strong> (Tier 0)</div>
+          <div>&bull; SW1=&darr; SW0=&uarr; &rarr; <strong>HEX1 = 1</strong>, cycles = <strong>15b8</strong> (Tier 1)</div>
+          <div>&bull; SW1=&uarr; SW0=&darr; &rarr; <strong>HEX1 = A</strong>, cycles = <strong>1638</strong> (Version A)</div>
+        </div>
+        <div class="p-3 rounded-xl border border-slate-800 bg-[#0B211C]/70 space-y-1">
+          <div class="text-emerald-400 font-bold">LED Status:</div>
+          <div>&bull; <strong>LEDG0:</strong> blink briefly (BUSY)</div>
+          <div>&bull; <strong>LEDG1:</strong> stays ON (DONE)</div>
+          <div>&bull; <strong>LEDG2:</strong> heartbeat (always blinks 1.5 Hz)</div>
+        </div>
+      </div>
+
+      <div class="mt-2 text-center text-[11px] text-slate-400 mono">
+        KEY[0] = Reset board &bull; KEY[1] = Manually re-trigger inference &bull; HEX0 must always equal HEX2 =&gt; 100% accuracy
+      </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- SLIDE 10: Performance Comparison: Tier 0 vs Version A -->
+    <!-- ===================================================================== -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="10">
+      <div class="mb-2">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-0.5">Benchmark Metrics</div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-100">Performance Comparison: Tier 0 vs Version A</h2>
+      </div>
+
+      <!-- 3 Visual Bar Charts in Row -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+        <!-- Chart 1: Softmax Cycles -->
+        <div class="p-3.5 rounded-xl border border-slate-800 bg-[#0C152B]/90 flex flex-col justify-between">
+          <div class="text-[11px] font-bold text-slate-300 mono text-center mb-2">Softmax Stage Cycles</div>
+          <div class="h-28 flex items-end justify-center gap-6 px-4 pb-2 border-b border-slate-800">
+            <!-- Ver A -->
+            <div class="flex flex-col items-center gap-1 w-12">
+              <span class="text-[10px] mono text-rose-300 font-bold">2008</span>
+              <div class="w-full bg-rose-500 rounded-t h-24"></div>
+              <span class="text-[9px] mono text-slate-400">Ver A</span>
+            </div>
+            <!-- Tier 0 -->
+            <div class="flex flex-col items-center gap-1 w-12">
+              <span class="text-[10px] mono text-emerald-300 font-bold">1880</span>
+              <div class="w-full bg-emerald-500 rounded-t h-20"></div>
+              <span class="text-[9px] mono text-emerald-400 font-bold">Tier 0</span>
+            </div>
+          </div>
+          <div class="text-center text-[10px] text-emerald-400 mono mt-1 font-semibold">-128 cycles (6.4% faster)</div>
+        </div>
+
+        <!-- Chart 2: Total Cycles -->
+        <div class="p-3.5 rounded-xl border border-slate-800 bg-[#0C152B]/90 flex flex-col justify-between">
+          <div class="text-[11px] font-bold text-slate-300 mono text-center mb-2">Total Inference Cycles</div>
+          <div class="h-28 flex items-end justify-center gap-6 px-4 pb-2 border-b border-slate-800">
+            <!-- Ver A -->
+            <div class="flex flex-col items-center gap-1 w-12">
+              <span class="text-[10px] mono text-rose-300 font-bold">5688</span>
+              <div class="w-full bg-rose-500 rounded-t h-24"></div>
+              <span class="text-[9px] mono text-slate-400">Ver A</span>
+            </div>
+            <!-- Tier 0 -->
+            <div class="flex flex-col items-center gap-1 w-12">
+              <span class="text-[10px] mono text-emerald-300 font-bold">5560</span>
+              <div class="w-full bg-emerald-500 rounded-t h-22"></div>
+              <span class="text-[9px] mono text-emerald-400 font-bold">Tier 0</span>
+            </div>
+          </div>
+          <div class="text-center text-[10px] text-emerald-400 mono mt-1 font-semibold">-128 cycles (2.25% faster)</div>
+        </div>
+
+        <!-- Chart 3: Latency -->
+        <div class="p-3.5 rounded-xl border border-slate-800 bg-[#0C152B]/90 flex flex-col justify-between">
+          <div class="text-[11px] font-bold text-slate-300 mono text-center mb-2">Latency @ 50 MHz (&mu;s)</div>
+          <div class="h-28 flex items-end justify-center gap-6 px-4 pb-2 border-b border-slate-800">
+            <!-- Ver A -->
+            <div class="flex flex-col items-center gap-1 w-12">
+              <span class="text-[10px] mono text-rose-300 font-bold">113.8</span>
+              <div class="w-full bg-rose-500 rounded-t h-24"></div>
+              <span class="text-[9px] mono text-slate-400">Ver A</span>
+            </div>
+            <!-- Tier 0 -->
+            <div class="flex flex-col items-center gap-1 w-12">
+              <span class="text-[10px] mono text-emerald-300 font-bold">111.2</span>
+              <div class="w-full bg-emerald-500 rounded-t h-22"></div>
+              <span class="text-[9px] mono text-emerald-400 font-bold">Tier 0</span>
+            </div>
+          </div>
+          <div class="text-center text-[10px] text-emerald-400 mono mt-1 font-semibold">-2.56 &mu;s speedup</div>
+        </div>
+      </div>
+
+      <!-- Bottom Comparison Table -->
+      <div class="rounded-xl border border-slate-800 bg-[#0C152B]/90 overflow-hidden">
+        <div class="p-2 bg-slate-900 text-xs font-bold text-slate-300 mono">Tier 0 Advantages Over Version A</div>
+        <table class="w-full text-left text-xs mono">
+          <tbody class="divide-y divide-slate-800 text-slate-200 text-[11px]">
+            <tr>
+              <td class="p-2 font-semibold">Softmax Cycles</td>
+              <td class="p-2 text-rose-300">2,008</td>
+              <td class="p-2 text-emerald-400 font-bold">1,880</td>
+              <td class="p-2 text-emerald-400">128 fewer (6.4%)</td>
+            </tr>
+            <tr>
+              <td class="p-2 font-semibold">Total Cycles</td>
+              <td class="p-2 text-rose-300">5,688</td>
+              <td class="p-2 text-emerald-400 font-bold">5,560</td>
+              <td class="p-2 text-emerald-400">128 fewer (2.25%)</td>
+            </tr>
+            <tr>
+              <td class="p-2 font-semibold">Latency @50MHz</td>
+              <td class="p-2 text-rose-300">113.76 &mu;s</td>
+              <td class="p-2 text-emerald-400 font-bold">111.20 &mu;s</td>
+              <td class="p-2 text-emerald-400">2.56 &mu;s faster</td>
+            </tr>
+            <tr>
+              <td class="p-2 font-semibold">Exp ROM entries</td>
+              <td class="p-2 text-rose-300">256</td>
+              <td class="p-2 text-emerald-400 font-bold">0</td>
+              <td class="p-2 text-emerald-400 font-bold">Eliminated entirely</td>
+            </tr>
+            <tr>
+              <td class="p-2 font-semibold">Extra Pipe stages</td>
+              <td class="p-2 text-rose-300">2 (descale/requant)</td>
+              <td class="p-2 text-emerald-400 font-bold">0</td>
+              <td class="p-2 text-emerald-400">No descale/requant</td>
+            </tr>
+            <tr>
+              <td class="p-2 font-semibold">MAE</td>
+              <td class="p-2 text-rose-300">0.1010</td>
+              <td class="p-2 text-emerald-400 font-bold">0.0023</td>
+              <td class="p-2 text-emerald-400">44x more accurate</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- SLIDE 11: Engineering Workflow Hardware Accelerator -->
+    <!-- ===================================================================== -->
+    <div class="slide max-w-6xl mx-auto w-full justify-between" data-slide="11">
+      <div class="mb-2">
+        <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mono mb-0.5">End-to-End Silicon Architecture</div>
+        <h2 class="text-xl sm:text-2xl font-bold text-slate-100">Engineering Workflow: INT8 Transformer Attention Hardware Accelerator on FPGA</h2>
+      </div>
+
+      <!-- Flow Diagram Grid with clean cards -->
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-2.5 flex-1 items-stretch text-xs mono">
+        <!-- Step 1 & 2 -->
+        <div class="flex flex-col gap-2">
+          <div class="p-3 rounded-xl border border-cyan-500/30 bg-[#0C1E38]/80 flex-1">
+            <div class="text-[10px] text-cyan-400 font-bold">1. Board Input & Mode Select</div>
+            <div class="mt-2 space-y-1 text-[11px] text-slate-300">
+              <div class="p-1.5 rounded bg-slate-900/90 border border-slate-800">DE2-115 Pushbuttons &bull; Reset</div>
+              <div class="p-1.5 rounded bg-slate-900/90 border border-slate-800">Switches &bull; Mode0 / Mode1</div>
+            </div>
+          </div>
+          <div class="p-3 rounded-xl border border-cyan-500/30 bg-[#0C1E38]/80 flex-1">
+            <div class="text-[10px] text-cyan-400 font-bold">2. Token Ingestion & Embedding</div>
+            <div class="mt-2 space-y-1 text-[11px] text-slate-300">
+              <div class="p-1.5 rounded bg-slate-900/90 border border-slate-800">Token Buffer (8 tokens)</div>
+              <div class="p-1.5 rounded bg-slate-900/90 border border-slate-800">ROM Table (10k x 128 INT8)</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="p-3 rounded-xl border border-purple-500/30 bg-[#160E2E]/80 flex flex-col justify-between">
+          <div>
+            <div class="text-[10px] text-purple-400 font-bold">3. Parallel 8-Lane MAC Units</div>
+            <div class="mt-2 space-y-1 text-[10px] text-slate-300">
+              <div class="p-1 rounded bg-slate-900/80 border border-slate-800">Lane 1: INT8 MAC &bull; Wq Wk Wv</div>
+              <div class="p-1 rounded bg-slate-900/80 border border-slate-800">Lane 2: INT8 MAC &bull; Wq Wk Wv</div>
+              <div class="p-1 rounded bg-slate-900/80 border border-slate-800">Lane 7: INT8 MAC &bull; Wq Wk Wv</div>
+              <div class="p-1 rounded bg-slate-900/80 border border-slate-800">Lane 8: INT8 MAC &bull; Wq Wk Wv</div>
+            </div>
+          </div>
+          <div class="p-1.5 rounded bg-purple-900/30 border border-purple-500/30 text-center text-[10px] text-purple-300 font-bold">
+            Q, K, V (8x128 matrices)
+          </div>
+        </div>
+
+        <!-- Step 4 & 5 -->
+        <div class="flex flex-col gap-2">
+          <div class="p-3 rounded-xl border border-sky-500/30 bg-[#0C1A33]/80 flex-1">
+            <div class="text-[10px] text-sky-400 font-bold">4. Attn Dot-Product (QK^T)</div>
+            <div class="mt-1.5 space-y-1 text-[10px] text-slate-300">
+              <div>&bull; Score Buffer</div>
+              <div>&bull; Dot-Product Matrix Multiplier</div>
+              <div>&bull; SRAM Score Buffer</div>
+            </div>
+          </div>
+          <div class="p-3 rounded-xl border-2 border-emerald-400 bg-[#0B211C]/90 flex-1 glow-emerald">
+            <div class="text-[10px] text-emerald-300 font-bold">5. Softmax Comparison</div>
+            <div class="mt-1.5 space-y-1 text-[10px] text-slate-200">
+              <div>&bull; Tier 0: Shift-Only Base-2</div>
+              <div>&bull; Tier 1: 16-LUT Refinement</div>
+              <div>&bull; Ver A: 24-bit Restoring Divider</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 6, 7 & 8 -->
+        <div class="flex flex-col gap-2">
+          <div class="p-2.5 rounded-xl border border-slate-800 bg-[#0C152B]/80 flex-1">
+            <div class="text-[10px] text-slate-300 font-bold">6. Context Aggr. & Mean Pool</div>
+            <div class="text-[10px] text-slate-400">Attention Output SRAM &bull; Pool Unit</div>
+          </div>
+          <div class="p-2.5 rounded-xl border border-slate-800 bg-[#0C152B]/80 flex-1">
+            <div class="text-[10px] text-slate-300 font-bold">7. 6-Class Intent Classifier</div>
+            <div class="text-[10px] text-emerald-400 font-bold">Classification FC Layer &bull; Argmax</div>
+          </div>
+          <div class="p-2.5 rounded-xl border border-slate-800 bg-[#0C152B]/80 flex-1">
+            <div class="text-[10px] text-cyan-400 font-bold">8. Multi-modal Telemetry</div>
+            <div class="text-[10px] text-slate-400">7-Seg Displays &bull; LEDs &bull; 115200 UART</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Bottom Navigation Thumbnails & Keyboard Hint Bar -->
+  <footer class="h-12 border-t border-slate-800 bg-[#0B1326]/90 px-6 flex items-center justify-between z-50 text-xs text-slate-400 mono flex-shrink-0">
+    <div class="flex items-center gap-2">
+      <span class="text-slate-500">Navigate:</span>
+      <span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">&larr;</span>
+      <span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">&rarr;</span>
+      <span class="text-slate-500 hidden sm:inline">or Spacebar</span>
+    </div>
+
+    <!-- Slide progress dots -->
+    <div class="flex items-center gap-1.5" id="slide-dots">
+      <!-- Generated via JS -->
+    </div>
+
+    <div class="flex items-center gap-2">
+      <span class="text-emerald-400">&bull; Synthesis Ready</span>
+      <span class="text-slate-600">|</span>
+      <span class="text-cyan-400">DE2-115 Cyclone IV</span>
+    </div>
+  </footer>
+
+  <!-- Slide Overview Modal (Grid of all 11 slides) -->
+  <div id="overview-modal" class="fixed inset-0 bg-[#070D18]/95 backdrop-blur-md z-50 p-6 hidden flex-col justify-between overflow-y-auto">
+    <div class="flex items-center justify-between border-b border-slate-800 pb-4 mb-6">
+      <h2 class="text-lg font-bold text-slate-100">All Slides Overview</h2>
+      <button onclick="toggleOverview()" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs mono">
+        Close (Esc)
+      </button>
+    </div>
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 flex-1" id="overview-grid">
+      <!-- Generated via JS -->
+    </div>
+  </div>
+
+  <script>
+    let currentSlide = 1;
+    const totalSlides = 11;
+    const slides = document.querySelectorAll('.slide');
+
+    const slideTitles = [
+      "1. Title & Abstract",
+      "2. Problem Statement",
+      "3. 8-Stage Architecture",
+      "4. 3 Softmax Architectures",
+      "5. ModelSim 10.5b Results",
+      "6. Live DE2-115 Board Demo",
+      "7. Key Findings & Contributions",
+      "8. Conclusion & Achievements",
+      "9. Board Demo Cheat Sheet",
+      "10. Performance Comparison",
+      "11. Engineering Workflow"
+    ];
+
+    function showSlide(index) {
+      if (index < 1) index = 1;
+      if (index > totalSlides) index = totalSlides;
+      
+      currentSlide = index;
+      slides.forEach((s, idx) => {
+        if (idx + 1 === currentSlide) {
+          s.classList.add('active');
+        } else {
+          s.classList.remove('active');
+        }
+      });
+
+      document.getElementById('current-slide-num').textContent = currentSlide;
+      updateDots();
+    }
+
+    function nextSlide() {
+      if (currentSlide < totalSlides) {
+        showSlide(currentSlide + 1);
+      }
+    }
+
+    function prevSlide() {
+      if (currentSlide > 1) {
+        showSlide(currentSlide - 1);
+      }
+    }
+
+    function updateDots() {
+      const container = document.getElementById('slide-dots');
+      container.innerHTML = '';
+      for (let i = 1; i <= totalSlides; i++) {
+        const dot = document.createElement('button');
+        dot.className = `w-2 h-2 rounded-full transition-all ${i === currentSlide ? 'bg-cyan-400 w-5 glow-cyan' : 'bg-slate-700 hover:bg-slate-500'}`;
+        dot.onclick = () => showSlide(i);
+        dot.title = slideTitles[i-1];
+        container.appendChild(dot);
+      }
+    }
+
+    function toggleOverview() {
+      const modal = document.getElementById('overview-modal');
+      modal.classList.toggle('hidden');
+      modal.classList.toggle('flex');
+      if (!modal.classList.contains('hidden')) {
+        renderOverviewGrid();
+      }
+    }
+
+    function renderOverviewGrid() {
+      const grid = document.getElementById('overview-grid');
+      grid.innerHTML = '';
+      for (let i = 1; i <= totalSlides; i++) {
+        const card = document.createElement('div');
+        card.className = `p-4 rounded-xl border ${i === currentSlide ? 'border-cyan-400 bg-cyan-950/30' : 'border-slate-800 bg-[#0C152B]'} hover:border-cyan-500/60 transition cursor-pointer flex flex-col justify-between`;
+        card.onclick = () => {
+          showSlide(i);
+          toggleOverview();
+        };
+        card.innerHTML = `
+          <div class="text-xs text-cyan-400 mono font-bold mb-2">Slide ${i}</div>
+          <div class="text-sm font-semibold text-slate-200">${slideTitles[i-1]}</div>
+          <div class="mt-4 text-[10px] text-slate-500 mono">Click to view &rarr;</div>
+        `;
+        grid.appendChild(card);
+      }
+    }
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    }
+
+    // Keyboard navigation
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+        nextSlide();
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        prevSlide();
+      } else if (e.key === 'Home') {
+        showSlide(1);
+      } else if (e.key === 'End') {
+        showSlide(totalSlides);
+      } else if (e.key === 'f' || e.key === 'F') {
+        toggleFullscreen();
+      } else if (e.key === 'g' || e.key === 'G') {
+        toggleOverview();
+      } else if (e.key === 'Escape') {
+        const modal = document.getElementById('overview-modal');
+        if (!modal.classList.contains('hidden')) {
+          toggleOverview();
+        }
+      }
+    });
+
+    // Initialize dots on load
+    updateDots();
+  </script>
+</body>
+</html>
