@@ -139,12 +139,14 @@ set_location_assignment PIN_AF17 -to HEX7[4]
 set_location_assignment PIN_AG18 -to HEX7[5]
 set_location_assignment PIN_AA14 -to HEX7[6]
 
-# CP2102 on JP5 GPIO Header (3.3V TTL)
+# CP2102 on JP5 GPIO Header (Bank 4 - 2.5 V)
 # Connect CP2102 TXD -> DE2-115 JP5 Pin 1 (GPIO[0], PIN_AB22)
 # Connect CP2102 RXD -> DE2-115 JP5 Pin 2 (GPIO[1], PIN_AC15)
 # Connect CP2102 GND -> DE2-115 JP5 Pin 12 (GND)
 set_location_assignment PIN_AB22 -to UART_RXD
 set_location_assignment PIN_AC15 -to UART_TXD
+set_instance_assignment -name IO_STANDARD "2.5 V" -to UART_TXD
+set_instance_assignment -name IO_STANDARD "2.5 V" -to UART_RXD
 
 # Optimization flags for high-performance arithmetic
 set_global_assignment -name CYCLONEII_OPTIMIZATION_TECHNIQUE SPEED

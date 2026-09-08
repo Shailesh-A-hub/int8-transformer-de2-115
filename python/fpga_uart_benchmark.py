@@ -227,6 +227,7 @@ def main():
     parser.add_argument("--port", "-p", default="COM6", help="Serial COM port (default: COM6)")
     parser.add_argument("--baud", "-b", type=int, default=115200, help="Baud rate (default: 115200)")
     parser.add_argument("--sentence", "-s", type=str, default=None, help="Directly type and run a single sentence")
+    parser.add_argument("--interactive", "-i", action="store_true", help="Run interactive console (default)")
     parser.add_argument("--benchmark", action="store_true", help="Directly trigger and print cycle benchmark")
     parser.add_argument("--mock", action="store_true", help="Display theoretical hardware metrics without opening port")
     args = parser.parse_args()

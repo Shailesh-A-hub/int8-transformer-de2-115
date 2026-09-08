@@ -167,9 +167,11 @@ set_location_assignment PIN_AF17 -to HEX7[4]
 set_location_assignment PIN_AG18 -to HEX7[5]
 set_location_assignment PIN_AA14 -to HEX7[6]
 
-# RS-232 / UART
-set_location_assignment PIN_G9 -to UART_TXD
-set_location_assignment PIN_G12 -to UART_RXD
+# CP2102 on JP5 GPIO Header (Bank 4 - 2.5 V)
+set_location_assignment PIN_AB22 -to UART_RXD
+set_location_assignment PIN_AC15 -to UART_TXD
+set_instance_assignment -name IO_STANDARD "2.5 V" -to UART_TXD
+set_instance_assignment -name IO_STANDARD "2.5 V" -to UART_RXD
 
 # Optimization flags for high-performance arithmetic
 set_global_assignment -name CYCLONEII_OPTIMIZATION_TECHNIQUE SPEED
